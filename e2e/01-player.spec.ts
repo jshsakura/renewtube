@@ -75,6 +75,49 @@ test('music mode shows no picture, and the bar button brings the stage over the 
   }
 })
 
+test('a track pressed on the home page plays on the watch page, where the picture can be', async () => {
+  const h = await open('https://www.youtube.com/')
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    // The desktop home keeps a player of its own hidden underneath, and it
+    // plays sound: a track used to play there and 영상 mode then had a 0x0
+    // player to show. The press now goes to the watch page, like a phone.
+    await ui.locator('.tile:not([aria-hidden])').first().click()
+    await ui.locator('.rows .row:not([aria-hidden])').nth(1).locator('.meta').click()
+    await h.page.waitForURL(/\/watch\?v=/, { timeout: 30_000 })
+    await expect(ui.locator('.app')).toBeVisible({ timeout: 60_000 })
+    await expect(ui.locator('.bar .now .t')).not.toHaveText('', { timeout: 20_000 })
+    await ui.locator('.bar .vid').click()
+    await expect(ui.locator('.slot')).toHaveClass(/stage/)
+    await expect
+      .poll(() => h.page.evaluate(() => { const r = document.getElementById('movie_player')!.getBoundingClientRect(); return r.width }), { timeout: 15_000 })
+      .toBeGreaterThan(400)
+  } finally {
+    await h.close()
+  }
+})
+
+test('the bar keeps every button on screen down to a 900px window', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    for (const width of [1100, 1024, 900]) {
+      await h.page.setViewportSize({ width, height: 760 })
+      await h.page.waitForTimeout(300)
+      const m = await ui.locator('.bar').evaluate((bar) => {
+        const vid = bar.querySelector('.vid')!.getBoundingClientRect()
+        return { overflow: bar.scrollWidth > bar.clientWidth, vidRight: Math.round(vid.right), barRight: Math.round(bar.getBoundingClientRect().right) }
+      })
+      expect(m.overflow, `${width}px`).toBe(false)
+      expect(m.vidRight, `${width}px`).toBeLessThanOrEqual(m.barRight)
+    }
+  } finally {
+    await h.close()
+  }
+})
+
 test('the queue advances and the mode survives it', async () => {
   const h = await open(WATCH)
   try {

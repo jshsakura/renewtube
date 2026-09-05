@@ -1096,6 +1096,13 @@ input[type=range]::-moz-range-thumb {
    still fit rather than two and a sliver. */
 @media (max-width: 1080px) {
   .app { --side: 208px; }
+  /* The bar's three columns had floors of 260, 320 and 220px, which is 800px
+     plus gaps in a bar that is 792px wide at 1024: the volume and the video
+     button were carried off the right-hand edge (measured 2026-09-06). The
+     title gives way first, then the transport tightens its gaps. */
+  .bar { grid-template-columns: minmax(120px, 1fr) auto auto; gap: 10px; }
+  .bar .ctl { gap: 2px; }
+  .bar .now .t { font-size: 13.5px; }
   .main { padding: 24px 22px 44px; }
   .tile { width: 158px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 22px 14px; }

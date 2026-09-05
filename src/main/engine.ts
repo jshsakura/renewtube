@@ -4,7 +4,7 @@
 // the rules of what plays after what. The UI reads from it and calls into it;
 // it never touches the player itself.
 
-import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
+import { State, disableAutonav, playerOnStage, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
 import { load, markArrival, remember, save, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Theme, type VideoLayout } from './store.ts'
@@ -853,7 +853,10 @@ export class Engine {
     this.wantPaused = false
     this.endedFor = undefined
     remember(track)
-    if (this.player) {
+    // A player the page keeps hidden under 홈 plays sound and shows nothing;
+    // the watch page is where a picture can be. Same as a phone, which has
+    // no player under its home at all and goes there too.
+    if (this.player && playerOnStage(this.player)) {
       this.unlockPlayback()
       this.player.loadVideoById(track.videoId)
       this.player.playVideo()
