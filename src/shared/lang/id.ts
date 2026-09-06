@@ -60,6 +60,7 @@ export const ID: Record<string, string> = {
   "크게 보기": "Besar",
   "구석에 두기": "Di sudut",
   "소리만 듣기": "Hanya audio",
+  "대기열 함께 보기": "Tampilkan dengan antrean",
   "노래, 영상, 채널 검색": "Cari lagu, video, kanal",
   "무엇을 들을까요?": "Mau dengar apa?",
   "결과가 없습니다.": "Tidak ada hasil.",

@@ -1229,6 +1229,9 @@ export class Engine {
 
   setVideo(layout: VideoLayout): void {
     this.state.video = layout
+    // A chosen picture layout is remembered so the live drop to 'hidden' when
+    // nothing plays cannot erase 영화관/시청.
+    if (layout === 'stage' || layout === 'watch') this.state.videoPref = layout
     this.changed()
   }
 

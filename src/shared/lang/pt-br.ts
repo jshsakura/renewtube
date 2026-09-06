@@ -60,6 +60,7 @@ export const PT_BR: Record<string, string> = {
   "크게 보기": "Grande",
   "구석에 두기": "No canto",
   "소리만 듣기": "Somente áudio",
+  "대기열 함께 보기": "Mostrar com a fila",
   "노래, 영상, 채널 검색": "Busque músicas, vídeos, canais",
   "무엇을 들을까요?": "O que você quer ouvir?",
   "결과가 없습니다.": "Nenhum resultado.",

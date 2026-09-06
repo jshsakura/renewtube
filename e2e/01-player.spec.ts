@@ -67,7 +67,10 @@ test('music mode shows no picture, and the bar button brings the stage over the 
         return r.slot[2]! > 400 && r.slot.every((v, i) => Math.abs(v - r.player[i]!) < 2)
       })
       .toBe(true)
-    // And back to sound only.
+    // And back to sound only — the desktop cycle is now 소리만 → 영화관 → 시청,
+    // so it takes two more presses to come round to hidden.
+    await ui.locator('.bar .vid').click()
+    await expect(ui.locator('.app')).toHaveClass(/has-watch/)
     await ui.locator('.bar .vid').click()
     await expect(ui.locator('.slot')).toHaveClass(/hidden/)
   } finally {
@@ -95,6 +98,45 @@ test('a track pressed on the home page plays where it is, and 영상 mode has a 
     await expect
       .poll(() => h.page.evaluate(() => document.getElementById('movie_player')!.getBoundingClientRect().width), { timeout: 15_000 })
       .toBeGreaterThan(400)
+  } finally {
+    await h.close()
+  }
+})
+
+test('the watch layout puts the queue beside the picture, and both cinema and watch are reachable', async () => {
+  const h = await open('https://www.youtube.com/')
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    // Play a shelf so the queue has entries for the column.
+    await ui.locator('.tile:not([aria-hidden])').first().click()
+    await ui.locator('.rows .row:not([aria-hidden])').first().locator('.meta').click()
+    await expect(ui.locator('.bar .now .t')).not.toHaveText('', { timeout: 20_000 })
+    // Cycle the picture button: 소리만 → 영화관(stage) → 시청(watch).
+    const vid = ui.locator('.bar .vid')
+    await vid.click()
+    await expect(ui.locator('.app')).toHaveClass(/has-stage/)
+    await vid.click()
+    await expect(ui.locator('.app')).toHaveClass(/has-watch/)
+    // The column is up, filled, and to the right of the picture with no overlap.
+    const col = ui.locator('.upnext')
+    await expect(col).toBeVisible()
+    await expect(col.locator('.upRow').first()).toBeVisible()
+    const geom = await h.page.evaluate(() => {
+      const sr = document.querySelector('oc-easy-mode')!.shadowRoot!
+      const slot = sr.querySelector('.slot')!.getBoundingClientRect()
+      const up = sr.querySelector('.upnext')!.getBoundingClientRect()
+      return { slotRight: Math.round(slot.right), upLeft: Math.round(up.left), slotRatio: slot.width / slot.height, sameTop: Math.abs(slot.top - up.top) < 2, sameH: Math.abs(slot.height - up.height) < 2 }
+    })
+    expect(geom.upLeft).toBeGreaterThanOrEqual(geom.slotRight - 1)
+    expect(geom.slotRatio).toBeGreaterThan(1.7)
+    expect(geom.slotRatio).toBeLessThan(1.82)
+    expect(geom.sameTop && geom.sameH).toBe(true)
+    // A row in the column jumps the queue to it.
+    const second = col.locator('.upRow').nth(1)
+    const label = (await second.locator('.upT').textContent())?.trim()
+    await second.click()
+    await expect.poll(() => ui.locator('.bar .now .t').textContent()).toBe(label ?? '')
   } finally {
     await h.close()
   }
@@ -163,7 +205,9 @@ test('the picture is on top of the app, and out of the way when it is not wanted
     await expect.poll(topOfStage).not.toBe('OC-EASY-MODE')
 
     // And with no picture asked for, nothing of the player may show: it is
-    // parked behind the app, which only works while the app is above it.
+    // parked behind the app, which only works while the app is above it. Two
+    // presses come round from 영화관 through 시청 to 소리만.
+    await ui.locator('.bar .vid').click()
     await ui.locator('.bar .vid').click()
     await expect(ui.locator('.slot')).toHaveClass(/hidden/)
     await expect

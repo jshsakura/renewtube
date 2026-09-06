@@ -40,6 +40,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
 
   const main = h('div', { class: 'main' })
   const slot = h('div', { class: 'slot' })
+  // The watch layout's right-hand column: the queue beside the picture.
+  const upnext = h('div', { class: 'upnext', 'aria-label': t('다음 재생') })
   const side = h('div', { class: 'side' })
   const bar = h('div', { class: 'bar' })
   // A strip of its own across the top, on a narrow screen only.
@@ -53,7 +55,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // own, the header is above the stage rather than under it, and cannot be
   // covered by anything.
   const top = h('div', { class: 'top' })
-  const app = h('div', { class: narrowNow() ? 'app narrow' : 'app' }, top, side, main, slot, bar)
+  const app = h('div', { class: narrowNow() ? 'app narrow' : 'app' }, top, side, main, slot, upnext, bar)
 
   // Light or dark follows YouTube, and nothing else. There is no switch: the
   // page underneath already has one, and two switches for one question is a
@@ -484,12 +486,58 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // ── The player slot ──────────────────────────────────────────────────────
 
   function setLayout(layout: VideoLayout): void {
+    // The right-hand queue needs room a phone does not have; there, watch
+    // collapses to the cinema stage.
+    if (narrowNow() && layout === 'watch') layout = 'stage'
     engine.setVideo(layout)
     slot.className = `slot ${layout}`
     app.classList.toggle('has-stage', layout === 'stage')
+    app.classList.toggle('has-watch', layout === 'watch')
     app.classList.toggle('has-corner', layout === 'corner')
+    if (layout === 'watch') drawUpnext()
     seatSlot()
     drawBar()
+  }
+
+  /**
+   * The queue as a column beside the picture, in the watch layout.
+   *
+   * The whole queue, the playing one marked, each a press that jumps to it —
+   * the up-next list of a watch page, drawn from the same queue the bar plays.
+   * Redrawn when the queue or the playing index moves (the subscription
+   * below), and only while the watch layout is up.
+   */
+  function drawUpnext(): void {
+    const q = engine.state.queue
+    const idx = engine.state.index
+    replace(
+      upnext,
+      h('div', { class: 'upnextHead' }, t('다음 재생')),
+      q.length === 0
+        ? h('div', { class: 'upnextEmpty' }, t('대기열이 비어 있습니다.'))
+        : h(
+            'div',
+            { class: 'upnextList' },
+            q.map((track, i) =>
+              h(
+                'button',
+                { class: i === idx ? 'upRow on' : 'upRow', 'data-nav': '', title: track.title, onclick: () => engine.jumpTo(i) },
+                h(
+                  'div',
+                  { class: 'upThumb' },
+                  h('img', { src: thumbnail(track.videoId), loading: 'lazy', alt: '' }),
+                  i === idx && h('span', { class: 'upPlaying', 'aria-hidden': 'true' }, icon('play', 12)),
+                ),
+                h(
+                  'div',
+                  { class: 'upMeta' },
+                  h('div', { class: 'upT' }, track.title),
+                  h('div', { class: 'upB' }, track.byline),
+                ),
+              ),
+            ),
+          ),
+    )
   }
 
   /**
@@ -704,12 +752,12 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    * The list's shape follows the big one: watching is 영상, and 영상 draws
    * thumbnails.
    */
-  const videoOrder = (): Placement[] => ['hidden', 'stage']
+  const videoOrder = (): Placement[] => (narrowNow() ? ['hidden', 'stage'] : ['hidden', 'stage', 'watch'])
   const videoButton = h('button', { class: 'vid', 'data-nav': '', title: t('화면 보기') }, icon('video', 18))
   videoButton.addEventListener('click', () => {
     const order = videoOrder()
     const next = order[(order.indexOf(engine.state.video) + 1) % order.length]!
-    engine.setMode(next === 'stage' ? 'video' : 'music')
+    engine.setMode(next === 'hidden' ? 'music' : 'video')
     setLayout(next)
   })
 
@@ -1018,11 +1066,16 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // The glyph is the *next* state, not the current one: a button showing a
     // crossed-out camera while the picture is already off says nothing about
     // what it does. Pressed, it shows the picture — so it shows a camera.
+    // The cycle is 소리만 → 영화관 → 시청(대기열 곁) on a desktop, 소리만 →
+    // 영화관 on a phone. The glyph and title name what the next press does.
     const where = engine.state.video
-    const next = { hidden: 'video', corner: 'expand', stage: 'videoOff' } as const
-    replace(videoButton, icon(next[where], 18))
+    const nextGlyph = { hidden: 'video', stage: 'queue', watch: 'videoOff', corner: 'expand' } as const
+    const nextTitle = { hidden: t('화면 보기'), stage: t('대기열 함께 보기'), watch: t('소리만 듣기'), corner: t('소리만 듣기') } as const
+    // A phone has no 시청 layout, so from 영화관 the next press is 소리만.
+    const glyph = where === 'stage' && narrowNow() ? 'videoOff' : nextGlyph[where]
+    replace(videoButton, icon(glyph, 18))
     videoButton.className = where === 'hidden' ? 'vid' : 'vid on'
-    videoButton.title = where === 'hidden' ? t('화면 보기') : t('소리만 듣기')
+    videoButton.title = where === 'stage' && narrowNow() ? t('소리만 듣기') : nextTitle[where]
     prevButton.disabled = engine.state.queue.length === 0
     nextButton.disabled = engine.state.queue.length === 0
     loadRating()
@@ -1251,7 +1304,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    */
   function pictureNow(): VideoLayout {
     if (!engine.current) return 'hidden'
-    if (engine.state.mode === 'video') return 'stage'
+    if (engine.state.mode === 'video') return !narrowNow() && engine.state.videoPref === 'watch' ? 'watch' : 'stage'
     // Music: nothing at all. The corner window a desktop used to get here was
     // a window over the list being read, with YouTube's controls on it, and
     // was taken for a stray PiP (2026-09-06). Leaving the stage up with the
@@ -1267,6 +1320,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
       setLayout(pictureNow())
       if (app.classList.contains('lyrics-open')) void loadLyrics()
     }
+    if (app.classList.contains('has-watch')) drawUpnext()
     drawBar()
     if (ctx.view.kind === 'queue') ctx.reload()
   })

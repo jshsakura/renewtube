@@ -10,7 +10,7 @@ import { narrowNow } from './ui/device.ts'
 
 export type Repeat = 'off' | 'all' | 'one'
 /** Where YouTube's own player sits on screen. */
-export type VideoLayout = 'hidden' | 'corner' | 'stage'
+export type VideoLayout = 'hidden' | 'corner' | 'stage' | 'watch'
 /**
  * Which of the two shapes the UI takes. Music is a list with the picture
  * tucked into a corner; video puts the picture first. They share every screen
@@ -36,6 +36,13 @@ export interface Persisted {
   /** Playback speed, 1 being ordinary. Kept, because a podcast listener means it. */
   rate: number
   video: VideoLayout
+  /**
+   * The desktop picture layout a person chose and keeps: 영화관(stage) or
+   * 시청(watch). Distinct from `video`, which is the live layout and drops to
+   * 'hidden' whenever nothing is playing — that drop must not erase the
+   * choice, or 시청 would revert to 영화관 on the next load.
+   */
+  videoPref: 'stage' | 'watch'
   /** Where the UI was; restored so a reload lands in the same place. */
   view: string
 }
@@ -181,6 +188,7 @@ export const DEFAULTS: Persisted = {
   volume: 100,
   rate: 1,
   video: 'hidden',
+  videoPref: 'stage',
   // Not 'home', which YouTube leaves empty until it knows you.
   view: 'explore',
 }

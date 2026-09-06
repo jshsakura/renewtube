@@ -60,6 +60,7 @@ export const VI: Record<string, string> = {
   "크게 보기": "Lớn",
   "구석에 두기": "Ở góc",
   "소리만 듣기": "Chỉ âm thanh",
+  "대기열 함께 보기": "Hiện cùng hàng đợi",
   "노래, 영상, 채널 검색": "Tìm bài hát, video, kênh",
   "무엇을 들을까요?": "Bạn muốn nghe gì?",
   "결과가 없습니다.": "Không có kết quả.",

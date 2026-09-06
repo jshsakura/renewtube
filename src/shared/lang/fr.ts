@@ -60,6 +60,7 @@ export const FR: Record<string, string> = {
   "크게 보기": "Grand",
   "구석에 두기": "Dans le coin",
   "소리만 듣기": "Audio seul",
+  "대기열 함께 보기": "Afficher avec la file",
   "노래, 영상, 채널 검색": "Rechercher titres, vidéos, chaînes",
   "무엇을 들을까요?": "Que voulez-vous écouter ?",
   "결과가 없습니다.": "Aucun résultat.",
