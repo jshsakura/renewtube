@@ -8,6 +8,7 @@ import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
 import { load, markArrival, remember, save, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Theme, type VideoLayout } from './store.ts'
+import { narrowNow } from './ui/device.ts'
 
 /**
  * How long after an advert the end-of-track check stays quiet.
@@ -728,8 +729,14 @@ export class Engine {
   // own quiet way: the ceiling alone never leaves 144p, and auto alone leaves
   // video mode sitting at 360p.
 
-  /** The ceiling for video mode. Above this is a lot of battery for a phone. */
-  private static readonly CEILING = 'hd1080'
+  /**
+   * The ceiling for video mode **on a phone**. Above this is a lot of battery
+   * and a lot of data for a screen that cannot show the difference. A desktop
+   * has no such reason, so it is not capped there (see applyQuality): a PC
+   * stage that could show 1440p or 4K was being held to 1080p, which is the
+   * "PC 자동 화질이 작살났다" report.
+   */
+  private static readonly PHONE_CEILING = 'hd1080'
 
   /**
    * The smallest stream this video actually offers.
@@ -747,9 +754,31 @@ export class Engine {
     }
   }
 
-  /** What the current mode wants the player to be showing. */
+  /** The best this video offers: the list is highest-first with `auto` last. */
+  private highestLevel(): string {
+    try {
+      const levels = this.player?.getAvailableQualityLevels?.() ?? []
+      const real = levels.filter((l) => l !== 'auto')
+      return real[0] ?? Engine.PHONE_CEILING
+    } catch {
+      return Engine.PHONE_CEILING
+    }
+  }
+
+  /** The top of the range video mode allows: the phone's battery cap, or the video's best on a desktop. */
+  private videoCeiling(): string {
+    return narrowNow() ? Engine.PHONE_CEILING : this.highestLevel()
+  }
+
+  /**
+   * What the current mode wants the player to be showing.
+   *
+   * Only the music-mode branch is used (the tick re-pins quality in music mode
+   * alone), so this is the low pin; video mode's ceiling is a range, applied
+   * in applyQuality.
+   */
   private wantedQuality(): string {
-    return this.state.mode === 'music' ? this.lowestLevel() : Engine.CEILING
+    return this.state.mode === 'music' ? this.lowestLevel() : this.videoCeiling()
   }
 
   private applyQuality(): void {
@@ -760,9 +789,11 @@ export class Engine {
         const low = this.lowestLevel()
         p.setPlaybackQualityRange(low, low)
       } else {
-        // Both, in this order. See the measurements above.
+        // Both, in this order. See the measurements above. The ceiling is the
+        // phone's battery cap on a narrow screen and the video's own best on a
+        // desktop, so a PC stage is free to reach 1440p or 4K.
         p.setPlaybackQualityRange('auto')
-        p.setPlaybackQualityRange(this.lowestLevel(), Engine.CEILING)
+        p.setPlaybackQualityRange(this.lowestLevel(), this.videoCeiling())
       }
     } catch {
       // A player build without the range form keeps whatever it was showing,
