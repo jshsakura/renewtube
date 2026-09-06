@@ -88,10 +88,10 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   visibility: visible !important;
   position: fixed !important;
   left: var(--oc-x, 0px) !important;
-  /* --oc-y is the slot's base top (apply adds back the scroll offset); the
-     picture then rides the list's scroll through the same --stage-scroll the
-     slot uses, so the two move as one with no JS tracking to lag. */
-  top: calc(var(--oc-y, 0px) - var(--stage-scroll, 0px)) !important;
+  /* --oc-y is the slot's base top; the list's scroll is folded into the
+     transform below (not into top), so the picture rides the scroll on the
+     compositor like the slot does, smoothly, moving as one with it. */
+  top: var(--oc-y, 0px) !important;
   width: var(--oc-w, 320px) !important;
   height: var(--oc-h, 180px) !important;
   z-index: var(--oc-z, 2147482100) !important;
@@ -102,7 +102,7 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
      said twice, and rightly. Whatever frame it needs is the slot's business,
      and the slot is behind it. */
   overflow: hidden !important;
-  transform: translate(var(--oc-dx, 0px), var(--oc-dy, 0px)) !important;
+  transform: translate(var(--oc-dx, 0px), calc(var(--oc-dy, 0px) - var(--stage-scroll, 0px))) !important;
   transition: none !important;
 }
 /* YouTube's own touch controls, on the mobile page.
@@ -139,17 +139,17 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   visibility: visible !important;
   position: fixed !important;
   left: var(--oc-x, 0px) !important;
-  /* --oc-y is the slot's base top (apply adds back the scroll offset); the
-     picture then rides the list's scroll through the same --stage-scroll the
-     slot uses, so the two move as one with no JS tracking to lag. */
-  top: calc(var(--oc-y, 0px) - var(--stage-scroll, 0px)) !important;
+  /* --oc-y is the slot's base top; the list's scroll is folded into the
+     transform below (not into top), so the picture rides the scroll on the
+     compositor like the slot does, smoothly, moving as one with it. */
+  top: var(--oc-y, 0px) !important;
   width: var(--oc-w, 320px) !important;
   height: var(--oc-h, 180px) !important;
   /* One above the picture, and it travels with it: cover() lowers --oc-z when
      the drawer comes out, and the controls have to go down with the thing they
      belong to rather than float over the menu. */
   z-index: calc(var(--oc-z, 2147482100) + 1) !important;
-  transform: translate(var(--oc-dx, 0px), var(--oc-dy, 0px)) !important;
+  transform: translate(var(--oc-dx, 0px), calc(var(--oc-dy, 0px) - var(--stage-scroll, 0px))) !important;
   /* Deaf on purpose, and this is the whole trick.
      The subtree is built on the first tap of the picture — so a container that
      takes touches itself eats the very tap that would create the controls, and
