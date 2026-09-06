@@ -110,6 +110,13 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
      2026-09-07, "스크롤할때 영상이 위로 걸리는데"). */
   will-change: transform !important;
 }
+/* In fullscreen the picture owns the whole screen, so none of our placement
+   applies — least of all the scroll transform, which would push the fullscreen
+   video off by however far the list was scrolled when it was pressed. */
+#movie_player:fullscreen {
+  transform: none !important;
+  top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important;
+}
 /* YouTube's own touch controls, on the mobile page.
  *
  * m.youtube.com does not put its controls inside #movie_player. That player
