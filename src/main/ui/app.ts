@@ -486,6 +486,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // ── The player slot ──────────────────────────────────────────────────────
 
   function setLayout(layout: VideoLayout): void {
+    // How much room the list reserves at the top *before* anything changes;
+    // compared after, the scroll is moved to match so the content does not
+    // jump and leave a blank band (hiding mid-scroll broke the screen).
+    const padBefore = Number.parseFloat(getComputedStyle(main).paddingTop) || 0
     // The right-hand queue needs room a phone does not have; there, watch
     // collapses to the cinema stage.
     if (narrowNow() && layout === 'watch') layout = 'stage'
@@ -495,9 +499,11 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     app.classList.toggle('has-watch', layout === 'watch')
     app.classList.toggle('has-corner', layout === 'corner')
     if (layout === 'watch') drawUpnext()
-    // A new stage starts un-scrolled; the list's own scrollTop resets with the view.
     document.documentElement.style.setProperty('--stage-scroll', '0px')
     seatSlot()
+    // Now the classes have settled, so the new reserved height is real.
+    const padAfter = Number.parseFloat(getComputedStyle(main).paddingTop) || 0
+    if (padAfter !== padBefore) main.scrollTop = Math.max(0, main.scrollTop - (padBefore - padAfter))
     // Re-measure after the slot has taken its new size, so the scroll handler
     // never has to touch layout itself.
     requestAnimationFrame(measureStage)
