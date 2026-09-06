@@ -104,6 +104,11 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   overflow: hidden !important;
   transform: translate(var(--oc-dx, 0px), calc(var(--oc-dy, 0px) - var(--stage-scroll, 0px))) !important;
   transition: none !important;
+  /* Keep the picture on its own compositor layer while the list scrolls the
+     transform under it. Without this the video layer repainted every scroll
+     frame, and it read as the picture snagging on the way up (reported
+     2026-09-07, "스크롤할때 영상이 위로 걸리는데"). */
+  will-change: transform !important;
 }
 /* YouTube's own touch controls, on the mobile page.
  *

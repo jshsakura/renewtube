@@ -498,6 +498,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // A new stage starts un-scrolled; the list's own scrollTop resets with the view.
     document.documentElement.style.setProperty('--stage-scroll', '0px')
     seatSlot()
+    // Re-measure after the slot has taken its new size, so the scroll handler
+    // never has to touch layout itself.
+    requestAnimationFrame(measureStage)
     drawBar()
   }
 
@@ -1321,14 +1324,23 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // CSS (--stage-scroll) and the player follows it through the shell's scroll
   // tracking. A phone is left alone; its stage was fine pinned. Clamped to the
   // slot's own height so it parks off the top and the list then has the screen.
+  //
+  // The stage height is measured once and cached, not read on every scroll:
+  // getBoundingClientRect in the scroll handler forces a synchronous layout
+  // each frame, which is the other half of the picture snagging on the way up
+  // (2026-09-07). It is refreshed when the layout is (re)applied and on resize,
+  // which is when the height can actually change.
+  let stageHeight = 0
+  function measureStage(): void {
+    stageHeight = app.classList.contains('has-stage') || app.classList.contains('has-watch') ? slot.getBoundingClientRect().height : 0
+  }
   function onMainScroll(): void {
-    if (app.classList.contains('narrow')) return
-    if (!app.classList.contains('has-stage') && !app.classList.contains('has-watch')) return
-    const stageH = slot.getBoundingClientRect().height
-    const y = stageH > 0 ? Math.min(main.scrollTop, stageH) : 0
+    if (app.classList.contains('narrow') || stageHeight <= 0) return
+    const y = Math.min(main.scrollTop, stageHeight)
     document.documentElement.style.setProperty('--stage-scroll', `${y}px`)
   }
   main.addEventListener('scroll', onMainScroll, { passive: true })
+  window.addEventListener('resize', measureStage, { passive: true })
 
   let showing = engine.current?.videoId
   const offChange = engine.subscribe(() => {
