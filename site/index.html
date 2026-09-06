@@ -167,7 +167,10 @@ svg {
    where the owner wanted them back (2026-09-07, "다국어랑 다크모드 좋았눈데 왜
    치웠냥"). A slim bar, right-aligned, wrapping on a phone. */
 .topbar { border-bottom: 1px solid var(--border); }
-.topbar-inner { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 10px 0; }
+.topbar-inner { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; }
+.topbar-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--text); font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+.topbar-brand img { border-radius: 7px; display: block; }
+.topbar-controls { display: flex; align-items: center; gap: 8px; }
 .topbar-select {
   appearance: none; -webkit-appearance: none;
   font: inherit; font-size: 13px; color: var(--text-muted);
@@ -178,7 +181,7 @@ svg {
 .topbar-select:hover { color: var(--text); border-color: var(--text-muted); }
 .topbar-theme { flex: none; width: 32px; min-width: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .topbar-theme svg { width: 15px; height: 15px; }
-@media (max-width: 560px) { .topbar-inner { justify-content: center; } }
+@media (max-width: 560px) { .topbar-brand span { display: none; } }
 
 /* Korean breaks between words, not inside them. */
 :root[lang="ko"] body { word-break: keep-all; }
@@ -793,6 +796,11 @@ kbd {
 
 <header class="topbar">
   <div class="wrap topbar-inner">
+    <a class="topbar-brand" href="./" aria-label="RenewTube">
+      <img src="icon-128.png" width="28" height="28" alt="">
+      <span>RenewTube</span>
+    </a>
+    <div class="topbar-controls">
     <select class="topbar-select" id="lang" aria-label="Language">
         <option value="en">English</option><option value="ko">한국어</option><option value="ja">日本語</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁體中文</option><option value="de">Deutsch</option><option value="es">Español</option><option value="fr">Français</option><option value="pt-br">Português (Brasil)</option><option value="ru">Русский</option><option value="hi">हिन्दी</option><option value="id">Bahasa Indonesia</option><option value="th">ไทย</option><option value="vi">Tiếng Việt</option>
       </select>
@@ -804,6 +812,7 @@ kbd {
           <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/>
         </svg>
       </button>
+    </div>
   </div>
 </header>
 
