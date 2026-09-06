@@ -128,11 +128,15 @@ export const STYLES = `
   --shadow: 0 2px 6px rgba(20, 12, 4, .28);
   --ease: .15s ease;
 
-  /* Bookish: the display face for screen titles and the words being sung.
-     Degrades to the UI sans wherever no Korean serif is installed — the
-     measure and leading carry the feel on their own. */
-  --font-book: Georgia, 'Iowan Old Style', 'Times New Roman', 'Noto Serif KR',
-               'Nanum Myeongjo', serif;
+  /* One face across the whole product: menu, titles, body and the words being
+     sung. The headings used to be a serif (Georgia / Noto Serif KR) while the
+     rest was this sans, and the mix read as two apps in one — the owner asked
+     for one font (2026-09-06, "통일해야지 뭔데 따로하냐고"). --font-book keeps
+     its name so the heading rules that reference it are unchanged; only the
+     family moved to the sans. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+               'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --font-book: var(--font-sans);
   /* Numbers the way a program sets them: fixed-width figures from the mono
      rack, for times, counts and durations. */
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
@@ -241,8 +245,7 @@ export const STYLES = `
   gap: var(--gap); padding: var(--gap);
   background: var(--ground);
   color: var(--foreground);
-  font: 14px/1.4285714 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Apple SD Gothic Neo',
-        'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  font: 14px/1.4285714 var(--font-sans);
   -webkit-font-smoothing: antialiased;
   /* Korean is written with spaces, but the engine treats it like Chinese and
      breaks between any two characters — "브라우 / 저에", "업데이트 확 / 인".
