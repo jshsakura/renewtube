@@ -30,6 +30,9 @@ const AD_SETTLE_MS = 1500
  */
 const STUCK_UNSTARTED_MS = 2000
 
+/** How many times to re-ask a loaded-but-never-started track to play before leaving it. */
+const MAX_START_TRIES = 4
+
 export type Listener = () => void
 
 /**
@@ -89,6 +92,10 @@ export class Engine {
   /** The id of the last load we asked for. Outlives `loading`, which the
    *  advert shortcut below clears early and, as measured, wrongly. */
   private loadedId: string | undefined
+
+  /** The load whose start we have already been nudging, and how many times. */
+  private startTries = 0
+  private startTriesSeq = -1
   /**
    * Whether the listener pressed mute.
    *
@@ -483,6 +490,49 @@ export class Engine {
       this.loading = this.loadedId
       p.loadVideoById({ videoId: this.loadedId, startSeconds: this.videoEl()?.currentTime ?? 0 })
       p.playVideo()
+    }
+    // A load that never *started*: the element is paused at the very top and
+    // nothing is coming.
+    //
+    // Distinct from the stuck-unstarted case above, which is the element
+    // playing while the player says Unstarted. Here the element itself is
+    // paused at 0 — measured on a signed-in desktop home page, where the
+    // hidden player under 홈 took loadVideoById, named the track, and then sat
+    // paused at 0:00 with the transport showing play and no way forward
+    // (reported 2026-09-06, "장전은 되는데 나오진 않어"). The recovery above
+    // cannot help: it is gated on the element already playing.
+    //
+    // Only when we asked to play (not a deliberate pause) and no advert is
+    // holding the track at 0 (an advert runs the element, so it is not paused).
+    // A few tries a tick apart, because a single playVideo can be swallowed by
+    // a player that is still settling; capped so a genuinely unplayable track
+    // is left alone rather than hammered forever.
+    const startEl = this.videoEl()
+    const startNamed = p.getVideoData()?.video_id
+    if (this.loadSeq !== this.startTriesSeq) {
+      this.startTriesSeq = this.loadSeq
+      this.startTries = 0
+    }
+    if (
+      this.loadedId !== undefined &&
+      !this.wantPaused &&
+      !ad &&
+      this.startTries < MAX_START_TRIES &&
+      Date.now() - this.loadAskedAt > STUCK_UNSTARTED_MS &&
+      startEl?.paused === true &&
+      startEl.currentTime < 0.5 &&
+      (!startNamed || startNamed === this.loadedId)
+    ) {
+      this.startTries += 1
+      try {
+        p.playVideo()
+      } catch {
+        // The element below is the one that actually carries the sound.
+      }
+      // On a desktop a gesture is not needed to start a media element that a
+      // gesture already loaded, so this can run from the tick; on iOS the
+      // element was unlocked at press time, so it can run here too.
+      void Promise.resolve(startEl.play()).catch(() => {})
     }
     // The rate is re-asserted, not set. YouTube's player drops it back to 1 at
     // moments of its own choosing — a new video becoming ready, a quality
