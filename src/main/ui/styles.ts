@@ -207,9 +207,15 @@ export const STYLES = `
   /* The stage is as tall as a 16:9 video in the width it has, and no taller.
      A fraction of the screen height was the wrong measure: it took the room a
      video needed plus whatever was left over, and the list got half a screen
-     the moment anyone pressed 영상. Capped, because on a wide window 16:9 of
-     the full width is most of the viewport. */
-  --stage-h: min(calc((100vw - var(--side) - var(--gap) * 3) * 0.5625), 42vh);
+     the moment anyone pressed 영상. The stage is now the full 16:9 of its
+     width, like a cinema, so a wide window fills edge to edge with no black
+     bars and the list scrolls below it (the owner asked for the width,
+     2026-09-06, "화면크기좀 채워 … 영화관 모드마냥"). Capped at 86vh only so a
+     short window keeps a sliver of the list in view; the phone already fills
+     its width the same way. */
+  --stage-h: min(calc((100vw - var(--side) - var(--gap) * 3) * 0.5625), 86vh);
+  /* The watch layout's right-hand queue column. */
+  --upnext-w: clamp(280px, 22vw, 380px);
 
   /* Two panels floating on a darker ground, with the player bar across the
      bottom. This is what separates an application from a web page: the chrome
@@ -779,6 +785,58 @@ input { font: inherit; color: inherit; }
   width: calc(100dvw - var(--side) - var(--gap) * 3); height: var(--stage-h);
 }
 .app.has-stage .main { padding-top: calc(var(--stage-h) + 20px); }
+
+/* The watch layout: the picture on the left with the queue as a column on its
+   right, like a watch page. The stage is the 16:9 of what is left after the
+   column, so it fills its own width with no bars, and the browse list scrolls
+   below both. Desktop only — a phone folds this back to the cinema stage. */
+.app.has-watch { --stage-h: min(calc((100vw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap)) * 0.5625), 86vh); }
+.slot.watch {
+  left: calc(var(--side) + var(--gap) * 2); top: var(--gap);
+  width: calc(100dvw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap));
+  height: var(--stage-h);
+}
+.app.has-watch .main { padding-top: calc(var(--stage-h) + 20px); }
+.upnext { display: none; }
+.app.has-watch .upnext {
+  position: fixed; top: var(--gap); height: var(--stage-h);
+  left: calc(100dvw - var(--upnext-w) - var(--gap)); width: var(--upnext-w);
+  display: flex; flex-direction: column; z-index: 5;
+  background: var(--card); border: 1px solid var(--glass-line);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.upnextHead {
+  flex: none; padding: 14px 16px 10px; font-size: 13px; font-weight: 600;
+  color: var(--muted-foreground); letter-spacing: -0.01em;
+}
+.upnextEmpty { padding: 0 16px 16px; font-size: 13px; color: var(--muted-foreground); }
+.upnextList { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; }
+.upRow {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 6px 8px; border-radius: var(--radius-md);
+  transition: background var(--ease);
+}
+.upRow:hover, .upRow:focus-visible { background: var(--secondary); }
+.upRow.on { background: var(--secondary); }
+.upThumb {
+  position: relative; flex: none; width: 68px; aspect-ratio: 16/9;
+  border-radius: 6px; overflow: hidden; background: var(--muted);
+}
+.upThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.upPlaying {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.45); color: #fff;
+}
+.upMeta { min-width: 0; flex: 1; }
+.upT {
+  font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--foreground);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.upB { margin-top: 2px; font-size: 11.5px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upRow.on .upT { color: var(--foreground); }
+/* Narrow desktops give the column less room before it folds to cinema. */
+@media (max-width: 1100px) { :root { --upnext-w: 260px; } }
+
 .app.has-corner .main { padding-bottom: 220px; }
 
 /* A wait, drawn inside the button that is waiting. currentColor, so it reads
