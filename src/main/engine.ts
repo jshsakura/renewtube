@@ -453,7 +453,15 @@ export class Engine {
    * NETWORK_LOADING, not NETWORK_EMPTY).
    */
   private rescueDormant(): void {
-    if (narrowNow()) return
+    // On a phone too, now. It was desktop-only to spare the phone a navigation
+    // that lands paused (an arrival cannot autostart under WebKit) — but a
+    // signed-in home/playlist player is dormant on the phone the same way it is
+    // on the desktop, and there the picture sat black holding a track that no
+    // press would start (2026-09-07, m.youtube.com, "재생기가 뭔가 물고있고
+    // 재생시 재생안됨"). A watch page gives a live player the press does reach,
+    // one tap away, which beats a dead stage. It still only fires on a player
+    // that is genuinely empty, so a phone where playing in place works (every
+    // signed-out case, and the WebKit test) never navigates.
     if (this.loadedId === undefined || this.loadSeq === this.navigatedForSeq) return
     if (Date.now() - this.loadAskedAt < DORMANT_MS) return
     if (/^\/watch/.test(location.pathname)) return
