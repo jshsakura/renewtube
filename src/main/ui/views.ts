@@ -412,9 +412,22 @@ function skFeed(ctx: Ctx, id: api.FeedId): HTMLElement {
 /** The overlay the tile menus anchor into, set whenever a track tile is built. */
 let rootOverlay: ShadowRoot
 
-/** Drops tracks from channels the reader chose not to see ("채널 추천 안 함"). */
-function keep(tracks: Track[]): Track[] {
-  return tracks.some((tr) => isChannelHidden(tr.channelId)) ? tracks.filter((tr) => !isChannelHidden(tr.channelId)) : tracks
+/**
+ * What a feed should actually draw: not from a hidden channel, and not
+ * unplayable.
+ *
+ * The owner's two asks in one sieve — 채널 추천 안 함 blocks a channel, and a
+ * track YouTube already says cannot play (region-locked, private, removed,
+ * members-only: `unavailable` from the parser) is not worth a card you can
+ * only bounce off ("내가 재생 못하는건 목록으로 그릴 필요가 없지"). Applied to
+ * every browse feed and shelf; the queue and a saved playlist keep their own
+ * rows, since a dead item there is the reader's to see and the playing one
+ * must never vanish under them.
+ */
+export function keep(tracks: Track[]): Track[] {
+  return tracks.some((tr) => tr.unavailable || isChannelHidden(tr.channelId))
+    ? tracks.filter((tr) => !tr.unavailable && !isChannelHidden(tr.channelId))
+    : tracks
 }
 
 function tile(opts: {

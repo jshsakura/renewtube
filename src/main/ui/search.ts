@@ -25,7 +25,7 @@ import { art, h, icon, replace } from './dom.ts'
 import { explain, type Ctx } from './ctx.ts'
 import { holdModal } from './overlay.ts'
 import { row } from './rows.ts'
-import { addQuick, nothing, screenTracks, skRow, skRows } from './views.ts'
+import { addQuick, keep, nothing, screenTracks, skRow, skRows } from './views.ts'
 
 /** How long the field waits after the last keystroke before asking YouTube. */
 const SETTLE_MS = 350
@@ -423,7 +423,7 @@ export function openSearch(ctx: Ctx, query = ''): void {
    */
   function answers(first: api.Page, fromScreen = false): HTMLElement[] {
     let page = first
-    let all: Track[] = first.tracks
+    let all: Track[] = keep(first.tracks)
     const rows = h('div', { class: 'rows' })
     const more = h('button', { class: 'btn ghost', 'data-nav': '', style: 'margin: 16px auto 0; display: flex' }, t('더 보기'))
 
@@ -458,7 +458,7 @@ export function openSearch(ctx: Ctx, query = ''): void {
         if (closed) return
         for (const el of waiting) el.remove()
         const firstNew = all.length
-        all = all.concat(next.tracks)
+        all = keep(all.concat(next.tracks))
         page = next
         draw()
         // The button that was pressed is gone from under the focus; the first
