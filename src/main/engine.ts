@@ -30,9 +30,6 @@ const AD_SETTLE_MS = 1500
  */
 const STUCK_UNSTARTED_MS = 2000
 
-/** How many times to re-ask a loaded-but-never-started track to play before leaving it. */
-const MAX_START_TRIES = 4
-
 export type Listener = () => void
 
 /**
@@ -93,9 +90,16 @@ export class Engine {
    *  advert shortcut below clears early and, as measured, wrongly. */
   private loadedId: string | undefined
 
-  /** The load whose start we have already been nudging, and how many times. */
-  private startTries = 0
-  private startTriesSeq = -1
+  /**
+   * We asked to hear the current track and it has not begun.
+   *
+   * Set when a track is pressed, cleared the moment the element is actually
+   * playing, on a deliberate pause, or on a playback error. While it is set,
+   * `tryStart` is armed on the element's own readiness events and re-checked
+   * each tick — so a track that loaded paused (a signed-in desktop home
+   * player did exactly this) is played the instant it can be, not on a guess.
+   */
+  private wantsPlaying = false
   /**
    * Whether the listener pressed mute.
    *
@@ -220,7 +224,9 @@ export class Engine {
     this.pageMuted = undefined
     this.pageInline = undefined
     this.boundVideo?.removeEventListener('ended', this.onElementEnded)
+    for (const ev of ['canplay', 'loadeddata', 'playing'] as const) this.boundVideo?.removeEventListener(ev, this.onElementReady)
     this.boundVideo = null
+    this.wantsPlaying = false
     this.player = null
     if (this.tickTimer) clearInterval(this.tickTimer)
     this.tickTimer = undefined
@@ -372,12 +378,57 @@ export class Engine {
   private onElementEnded = (): void => {
     this.tick()
   }
+  /**
+   * Start the current track the instant its element can play.
+   *
+   * The player's own `canplay`/`loadeddata`/`playing` are the deterministic
+   * signal that the media is ready; a track that loaded paused is started
+   * exactly then, once per readiness rather than on a timed retry. Kept in
+   * step with `wantsPlaying`, so it disarms itself.
+   */
+  private onElementReady = (): void => {
+    if (this.wantsPlaying) this.tryStart()
+  }
+  /**
+   * Ask the paused, loaded track to play, both ways.
+   *
+   * Not while an advert holds the element (an advert plays it, so it is not
+   * paused anyway) and not once it has begun. `playVideo` for the player and
+   * `play()` for the element, because on the home player the former was
+   * ignored and only the element obeyed. An element that errored is left
+   * alone — the intent clears so nothing loops on an unplayable track.
+   */
+  private tryStart(): void {
+    const el = this.videoEl()
+    if (!el) return
+    if (el.error) {
+      this.wantsPlaying = false
+      return
+    }
+    if (!el.paused) {
+      this.wantsPlaying = false
+      return
+    }
+    if (this.adShowing()) return
+    try {
+      this.player?.playVideo()
+    } catch {
+      // The element below is what actually carries the sound.
+    }
+    void Promise.resolve(el.play()).catch(() => {})
+  }
   private watchElement(): void {
     const el = this.videoEl()
     if (el === this.boundVideo) return
-    this.boundVideo?.removeEventListener('ended', this.onElementEnded)
+    for (const ev of ['ended'] as const) this.boundVideo?.removeEventListener(ev, this.onElementEnded)
+    for (const ev of ['canplay', 'loadeddata', 'playing'] as const) this.boundVideo?.removeEventListener(ev, this.onElementReady)
     this.boundVideo = el
-    el?.addEventListener('ended', this.onElementEnded)
+    if (!el) return
+    el.addEventListener('ended', this.onElementEnded)
+    for (const ev of ['canplay', 'loadeddata', 'playing'] as const) el.addEventListener(ev, this.onElementReady)
+    // The element may already be ready by the time we bind it, in which case
+    // no event will fire; check once now.
+    this.onElementReady()
   }
 
   /**
@@ -437,6 +488,7 @@ export class Engine {
       // Whoever pressed pause while this was loading meant it.
       if (this.wantPaused) {
         this.wantPaused = false
+        this.wantsPlaying = false
         p.pauseVideo()
       }
       // The rate is re-applied *here*, where the load has actually landed.
@@ -491,49 +543,14 @@ export class Engine {
       p.loadVideoById({ videoId: this.loadedId, startSeconds: this.videoEl()?.currentTime ?? 0 })
       p.playVideo()
     }
-    // A load that never *started*: the element is paused at the very top and
-    // nothing is coming.
-    //
-    // Distinct from the stuck-unstarted case above, which is the element
-    // playing while the player says Unstarted. Here the element itself is
-    // paused at 0 — measured on a signed-in desktop home page, where the
-    // hidden player under 홈 took loadVideoById, named the track, and then sat
-    // paused at 0:00 with the transport showing play and no way forward
-    // (reported 2026-09-06, "장전은 되는데 나오진 않어"). The recovery above
-    // cannot help: it is gated on the element already playing.
-    //
-    // Only when we asked to play (not a deliberate pause) and no advert is
-    // holding the track at 0 (an advert runs the element, so it is not paused).
-    // A few tries a tick apart, because a single playVideo can be swallowed by
-    // a player that is still settling; capped so a genuinely unplayable track
-    // is left alone rather than hammered forever.
-    const startEl = this.videoEl()
-    const startNamed = p.getVideoData()?.video_id
-    if (this.loadSeq !== this.startTriesSeq) {
-      this.startTriesSeq = this.loadSeq
-      this.startTries = 0
-    }
-    if (
-      this.loadedId !== undefined &&
-      !this.wantPaused &&
-      !ad &&
-      this.startTries < MAX_START_TRIES &&
-      Date.now() - this.loadAskedAt > STUCK_UNSTARTED_MS &&
-      startEl?.paused === true &&
-      startEl.currentTime < 0.5 &&
-      (!startNamed || startNamed === this.loadedId)
-    ) {
-      this.startTries += 1
-      try {
-        p.playVideo()
-      } catch {
-        // The element below is the one that actually carries the sound.
-      }
-      // On a desktop a gesture is not needed to start a media element that a
-      // gesture already loaded, so this can run from the tick; on iOS the
-      // element was unlocked at press time, so it can run here too.
-      void Promise.resolve(startEl.play()).catch(() => {})
-    }
+    // A track we asked for that has not begun. Cleared here the moment it is
+    // actually playing, so the intent below stops nudging on its own — no
+    // counting, no guessing when to give up. tryStart is also armed on the
+    // element's readiness events (watchElement), which is what makes the
+    // start deterministic rather than a tick lottery; this line is the
+    // fallback for the element that was already ready when we bound it.
+    if (this.wantsPlaying && this.sounding()) this.wantsPlaying = false
+    if (this.wantsPlaying) this.tryStart()
     // The rate is re-asserted, not set. YouTube's player drops it back to 1 at
     // moments of its own choosing — a new video becoming ready, a quality
     // change — and applying it once at any single point loses that race
@@ -893,6 +910,7 @@ export class Engine {
   /** Stops where it stands, rather than at the start of the next track. */
   private fallAsleep(): void {
     this.sleep = undefined
+    this.wantsPlaying = false
     if (this.position.playing) this.player?.pauseVideo()
     this.changed()
   }
@@ -935,6 +953,7 @@ export class Engine {
     this.endedFor = undefined
     remember(track)
     if (this.player) {
+      this.wantsPlaying = true
       this.unlockPlayback()
       this.player.loadVideoById(track.videoId)
       this.player.playVideo()
@@ -966,8 +985,10 @@ export class Engine {
       // ready — so without this the track starts anyway a second later and the
       // press looks ignored, which is exactly how it looked.
       this.wantPaused = true
+      this.wantsPlaying = false
     } else {
       this.wantPaused = false
+      this.wantsPlaying = true
       this.unlockPlayback()
       p.playVideo()
       this.syncMute()
