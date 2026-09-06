@@ -30,6 +30,18 @@ const AD_SETTLE_MS = 1500
  */
 const STUCK_UNSTARTED_MS = 2000
 
+/**
+ * How long a desktop press may sit with the in-page player refusing the video
+ * before the fallback navigates to the watch page.
+ *
+ * A working load has the player naming the video well inside this (measured
+ * ~1s signed out); only a dormant player — the signed-in home player, which
+ * takes loadVideoById and never fetches, leaving getVideoData empty and the
+ * element at NETWORK_EMPTY (measured 2026-09-06, the owner's diagnostics) —
+ * stays empty past it.
+ */
+const DORMANT_MS = 2200
+
 export type Listener = () => void
 
 /**
@@ -100,6 +112,9 @@ export class Engine {
    * player did exactly this) is played the instant it can be, not on a guess.
    */
   private wantsPlaying = false
+
+  /** The load we have already navigated away for, so the fallback fires once. */
+  private navigatedForSeq = -1
   /**
    * Whether the listener pressed mute.
    *
@@ -417,6 +432,43 @@ export class Engine {
     }
     void Promise.resolve(el.play()).catch(() => {})
   }
+  /**
+   * The last resort when the in-page player will not take the track: hand it to
+   * the watch page.
+   *
+   * On a signed-in home the hidden `ytd-watch-flexy` player accepts
+   * loadVideoById and then does nothing — getVideoData stays empty and the
+   * element sits at NETWORK_EMPTY with no source, so tryStart has nothing to
+   * start (measured 2026-09-06 from the owner's diagnostics; the same player
+   * plays signed out). Rather than leave a dead stage, navigate to the watch
+   * page, where YouTube builds a live player of its own — exactly what the
+   * no-player branch of load() already does, and how this worked before the
+   * player was driven in place.
+   *
+   * Desktop only. A phone (narrowNow, which also catches Orion on an iPhone)
+   * keeps playing in place, because there an arrival cannot start itself and a
+   * navigation would land on a dark, paused stage. Fires once per load, only
+   * after a grace period a healthy load clears well inside, and only when the
+   * player is genuinely empty — not merely slow (a loading element is at
+   * NETWORK_LOADING, not NETWORK_EMPTY).
+   */
+  private rescueDormant(): void {
+    if (narrowNow()) return
+    if (this.loadedId === undefined || this.loadSeq === this.navigatedForSeq) return
+    if (Date.now() - this.loadAskedAt < DORMANT_MS) return
+    if (/^\/watch/.test(location.pathname)) return
+    const p = this.player
+    if (!p) return
+    if (p.getVideoData()?.video_id) return
+    const el = this.videoEl()
+    const empty = !el || (el.networkState === 0 && !el.currentSrc && !el.src && el.readyState === 0)
+    if (!empty) return
+    this.navigatedForSeq = this.loadSeq
+    setQuickOn(true)
+    markArrival(this.loadedId)
+    save(this.state)
+    location.assign(`/watch?v=${this.loadedId}`)
+  }
   private watchElement(): void {
     const el = this.videoEl()
     if (el === this.boundVideo) return
@@ -551,6 +603,7 @@ export class Engine {
     // fallback for the element that was already ready when we bound it.
     if (this.wantsPlaying && this.sounding()) this.wantsPlaying = false
     if (this.wantsPlaying) this.tryStart()
+    if (this.wantsPlaying) this.rescueDormant()
     // The rate is re-asserted, not set. YouTube's player drops it back to 1 at
     // moments of its own choosing — a new video becoming ready, a quality
     // change — and applying it once at any single point loses that race
