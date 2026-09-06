@@ -12,6 +12,7 @@ import {
   continuationToken,
   isObject,
   playlists as parsePlaylists,
+  sectionContinuation,
   shelves as parseShelves,
   tracks as parseTracks,
   dedupe,
@@ -612,7 +613,30 @@ export async function topic(cfg: YtCfg, browseId: string): Promise<Page> {
     if (!(err instanceof InnertubeError) || err.kind !== 'request') throw err
     res = await call(cfg, 'browse', { browseId }, 'tv')
   }
-  return { tracks: parseTracks(res), shelves: parseShelves(res), endpoint: 'browse', client: 'tv' }
+  return { tracks: parseTracks(res), shelves: parseShelves(res), continuation: sectionContinuation(res), endpoint: 'browse', client: 'tv' }
+}
+
+/**
+ * The rest of one shelf, as the client that gave it.
+ *
+ * A television row answers five cards and a token for five more, and the
+ * token holds for the row alone; the response is a `horizontalListContinuation`
+ * with items and, unless the row is finished, a token of its own.
+ */
+export async function moreShelf(cfg: YtCfg, token: string, as: Client): Promise<Shelf> {
+  const res = await call(cfg, 'browse', { continuation: token }, as)
+  const next = continuationToken(res)
+  return { title: '', tracks: parseTracks(res), playlists: parsePlaylists(res), ...(next ? { continuation: next } : {}) }
+}
+
+/**
+ * More rows of a television page: the section list's own continuation. The
+ * shelves come back whole, each with its token, so they fill like the first.
+ */
+export async function moreShelves(cfg: YtCfg, page: Page): Promise<Page> {
+  if (!page.continuation) return { tracks: [], shelves: [], endpoint: page.endpoint, client: page.client }
+  const res = await call(cfg, page.endpoint, { continuation: page.continuation }, page.client ?? 'page')
+  return { tracks: [], shelves: parseShelves(res), continuation: sectionContinuation(res), endpoint: page.endpoint, client: page.client }
 }
 
 /** 학습, which the desktop client answers as a flat list of lockups. */

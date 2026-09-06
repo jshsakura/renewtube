@@ -485,17 +485,65 @@ function playlistTile(ctx: Ctx, p: Playlist): HTMLElement {
   })
 }
 
-/** A titled row that scrolls sideways. */
-function shelfRow(ctx: Ctx, shelf: Shelf): HTMLElement {
+/** How close to the row's end, in cards, before the rest is asked for. */
+const SHELF_AHEAD_TILES = 3
+
+/**
+ * A titled row that scrolls sideways, and fetches the rest of itself.
+ *
+ * The television hands a row over five cards at a time (see Shelf.continuation
+ * in parse.ts), so a row is drawn from what came and then kept fed: at once
+ * while it does not yet overflow its pane, and again whenever the scroll
+ * comes within a few cards of the end. The tracks are held in one growing
+ * array and every card plays from it, so a card pressed early still queues the
+ * cards that arrived after it. Nothing is asked for a row that came whole.
+ */
+function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): HTMLElement {
+  const tracks = [...shelf.tracks]
   const row = h(
     'div',
     { class: 'shelfRow' },
     shelf.playlists.map((p) => playlistTile(ctx, p)),
-    shelf.tracks.map((_, i) => trackTile(ctx, shelf.tracks, i)),
+    tracks.map((_, i) => trackTile(ctx, tracks, i)),
   )
   // A mouse can pull the row sideways; a finger always could.
   makeDraggable(row)
-  return h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row)
+  const section = h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row)
+
+  let token = shelf.continuation
+  let busy = false
+  const nearEnd = () => {
+    const tile = row.querySelector<HTMLElement>('.tile')
+    const ahead = (tile?.offsetWidth ?? 176) * SHELF_AHEAD_TILES
+    return row.scrollLeft + row.clientWidth > row.scrollWidth - ahead
+  }
+  const feed = async (): Promise<void> => {
+    if (!token || busy || !row.isConnected) return
+    busy = true
+    const waiting = Array.from({ length: 3 }, () => skTile())
+    row.append(...waiting)
+    try {
+      const next = await api.moreShelf(ctx.cfg, token, client)
+      token = next.continuation
+      const from = tracks.length
+      tracks.push(...next.tracks)
+      for (const el of waiting) el.remove()
+      row.append(...next.playlists.map((p) => playlistTile(ctx, p)), ...next.tracks.map((_, i) => trackTile(ctx, tracks, from + i)))
+      // Five more may still not reach the edge of a wide pane.
+      if (row.isConnected && nearEnd()) void feed()
+    } catch {
+      // The row keeps what it has; the next scroll asks again.
+      for (const el of waiting) el.remove()
+    } finally {
+      busy = false
+    }
+  }
+  if (token) {
+    row.addEventListener('scroll', () => nearEnd() && void feed(), { passive: true })
+    // Once the row has a size: a section built off-screen measures 0 wide.
+    requestAnimationFrame(() => nearEnd() && void feed())
+  }
+  return section
 }
 
 /**
@@ -545,16 +593,46 @@ async function shelfScreen(ctx: Ctx, main: HTMLElement, title: string, load: () 
     if (page.shelves.length === 0 && page.tracks.length === 0) {
       return replace(main, h('h2', null, title), nothing(t('보여줄 것이 없습니다.'), glyph))
     }
+    const shelvesBox = h('div', { class: 'shelves' }, page.shelves.map((shelf) => shelfRow(ctx, shelf, page.client)))
     replace(
       main,
       h('h2', null, title),
-      page.shelves.map((shelf) => shelfRow(ctx, shelf)),
+      shelvesBox,
       page.shelves.length === 0 && h('div', { class: 'grid' }, page.tracks.map((_, i) => trackTile(ctx, page.tracks, i))),
+      // The rows below the fold, a page at a time. The television's list
+      // carries a token for more shelves, and a screen that stopped at the
+      // first four read as a short one.
+      page.continuation && moreShelvesButton(ctx, page, shelvesBox, token),
     )
   } catch (err) {
     if (!current(token)) return
     replace(main, h('h2', null, title), h('div', { class: 'err' }, explain(err)))
   }
+}
+
+/** 더 보기 under a television page: appends the next rows and steps aside when there are none. */
+function moreShelvesButton(ctx: Ctx, first: api.Page, box: HTMLElement, token: number): HTMLElement {
+  let page = first
+  const more = h('button', { class: 'btn ghost', 'data-nav': '', style: 'margin: 16px auto 0; display: flex' }, t('더 보기'))
+  more.addEventListener('click', async () => {
+    const waiting = [skShelf(), skShelf()]
+    more.remove()
+    box.append(...waiting)
+    try {
+      const next = await api.moreShelves(ctx.cfg, page)
+      if (!current(token)) return
+      page = next
+      for (const el of waiting) el.remove()
+      box.append(...next.shelves.map((shelf) => shelfRow(ctx, shelf, next.client)))
+      if (next.continuation && next.shelves.length > 0) box.after(more)
+    } catch (err) {
+      if (!current(token)) return
+      ctx.say(explain(err), true)
+      for (const el of waiting) el.remove()
+      box.after(more)
+    }
+  })
+  return more
 }
 
 // ── The television's menu ─────────────────────────────────────────────────

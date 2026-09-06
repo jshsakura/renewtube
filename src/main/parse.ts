@@ -101,6 +101,17 @@ export interface Shelf {
   title: string
   tracks: Track[]
   playlists: Playlist[]
+  /**
+   * The token for the rest of this row, when YouTube kept some back.
+   *
+   * The television's shelves arrive five cards at a time with a token each
+   * (measured 2026-09-06 on FEtopics_sports: four rows of five, every one
+   * with a continuation that answers five more). A row drawn from the first
+   * answer alone was five cards and a hard edge, which read as "why so few".
+   * The token is bound to the session that received it: asked from another
+   * visitor it answers nothing at all.
+   */
+  continuation?: string
 }
 
 /**
@@ -501,10 +512,39 @@ export function shelves(root: unknown): Shelf[] {
       // where the four rows are Highlights, Live, Trending and Top Stories).
       // Falling back rather than replacing, so every other shelf is untouched.
       const title = text(shelf.title) || text(findFirst(shelf.headerRenderer, 'title'))
-      out.push({ title, tracks: inside, playlists: lists })
+      const continuation = nextToken(items)
+      out.push(continuation ? { title, tracks: inside, playlists: lists, continuation } : { title, tracks: inside, playlists: lists })
     }
   }
   return out
+}
+
+/** The older form of token, `{nextContinuationData: {continuation}}`, first found under `root`. */
+function nextToken(root: unknown): string | undefined {
+  for (const data of collect(root, 'nextContinuationData')) {
+    if (isObject(data) && typeof data.continuation === 'string' && data.continuation) return data.continuation
+  }
+  return undefined
+}
+
+/**
+ * The token for more *rows*, as distinct from more of one row.
+ *
+ * A television page is a section list of shelves, and both carry tokens: each
+ * shelf for the rest of itself, the list for the shelves below. In document
+ * order the shelves come first, so `continuationToken` would hand back the
+ * first shelf's. This reads the list's own `continuations`, on the page and
+ * on a continuation of it.
+ */
+export function sectionContinuation(root: unknown): string | undefined {
+  for (const key of ['sectionListRenderer', 'sectionListContinuation']) {
+    for (const list of collect(root, key)) {
+      if (!isObject(list)) continue
+      const token = nextToken(list.continuations)
+      if (token) return token
+    }
+  }
+  return undefined
 }
 
 /** The token that asks for the next page, in either of the forms YouTube emits. */

@@ -102,3 +102,38 @@ test('switching off the screen you stand on lands you on 음악', async () => {
     await h.close()
   }
 })
+
+test('a television shelf fills past its first five cards, and the page has more rows', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    const over = overlay(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.sideHead .gear').click()
+    const sheet = over.locator('.modal.settings')
+    await sheet.locator('.setToggle', { hasText: '스포츠' }).click()
+    await h.page.keyboard.press('Escape')
+    await expect(sheet).toHaveCount(0)
+    await ui.locator('.nav', { hasText: '스포츠' }).click()
+    await expect(ui.locator('.main h2')).toHaveText('스포츠')
+    const row = ui.locator('.main .shelf:not([aria-hidden]) .shelfRow').first()
+    const cards = row.locator('.tile:not([aria-hidden])')
+    await expect(cards.first()).toBeVisible({ timeout: 30_000 })
+    // The television answered five. A row that does not reach the pane's
+    // edge asks for the rest by itself.
+    await expect.poll(() => cards.count(), { timeout: 20_000 }).toBeGreaterThan(5)
+    const filled = await cards.count()
+    // Scrolling to the end asks for more still.
+    await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }))
+    await expect.poll(() => cards.count(), { timeout: 20_000 }).toBeGreaterThan(filled)
+    // And a card from the fed part plays the row it stands in.
+    await h.page.screenshot({ path: process.env.SHOT_DIR ? `${process.env.SHOT_DIR}/sports.png` : 'test-results/sports.png' })
+    // 더 보기 brings rows the first answer kept back.
+    const shelves = ui.locator('.main .shelf:not([aria-hidden])')
+    const before = await shelves.count()
+    await ui.locator('.main .btn.ghost', { hasText: '더 보기' }).click()
+    await expect.poll(() => shelves.count(), { timeout: 20_000 }).toBeGreaterThan(before)
+  } finally {
+    await h.close()
+  }
+})
