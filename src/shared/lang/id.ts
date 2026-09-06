@@ -155,4 +155,7 @@ export const ID: Record<string, string> = {
   "지우기": "Hapus",
   "검색어 삭제": "Hapus pencarian ini",
   "채널 열기": "Buka channel",
+  "진단": "Diagnostik",
+  "화면 진단": "Diagnostik layar",
+  "복사": "Salin",
 }

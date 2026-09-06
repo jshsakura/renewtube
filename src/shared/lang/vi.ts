@@ -155,4 +155,7 @@ export const VI: Record<string, string> = {
   "지우기": "Xóa",
   "검색어 삭제": "Xóa từ khóa này",
   "채널 열기": "Mở kênh",
+  "진단": "Chẩn đoán",
+  "화면 진단": "Chẩn đoán màn hình",
+  "복사": "Sao chép",
 }

@@ -155,4 +155,7 @@ export const FR: Record<string, string> = {
   "지우기": "Effacer",
   "검색어 삭제": "Supprimer la recherche",
   "채널 열기": "Ouvrir la chaîne",
+  "진단": "Diagnostic",
+  "화면 진단": "Diagnostic de l'écran",
+  "복사": "Copier",
 }
