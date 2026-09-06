@@ -75,23 +75,25 @@ test('music mode shows no picture, and the bar button brings the stage over the 
   }
 })
 
-test('a track pressed on the home page plays on the watch page, where the picture can be', async () => {
+test('a track pressed on the home page plays where it is, and 영상 mode has a picture', async () => {
   const h = await open('https://www.youtube.com/')
   try {
     const ui = app(h.page)
     await expect(ui.locator('.app')).toBeVisible()
-    // The desktop home keeps a player of its own hidden underneath, and it
-    // plays sound: a track used to play there and 영상 mode then had a 0x0
-    // player to show. The press now goes to the watch page, like a phone.
+    // The desktop home keeps a player of its own hidden underneath. It plays
+    // sound, and our sheet unhides its ancestor so the picture has a box too:
+    // no page load, no address change, and the press is the gesture.
     await ui.locator('.tile:not([aria-hidden])').first().click()
     await ui.locator('.rows .row:not([aria-hidden])').nth(1).locator('.meta').click()
-    await h.page.waitForURL(/\/watch\?v=/, { timeout: 30_000 })
-    await expect(ui.locator('.app')).toBeVisible({ timeout: 60_000 })
     await expect(ui.locator('.bar .now .t')).not.toHaveText('', { timeout: 20_000 })
+    await expect
+      .poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v && !v.paused && v.currentTime > 0.5 }), { timeout: 20_000 })
+      .toBe(true)
+    expect(new URL(h.page.url()).pathname).toBe('/')
     await ui.locator('.bar .vid').click()
     await expect(ui.locator('.slot')).toHaveClass(/stage/)
     await expect
-      .poll(() => h.page.evaluate(() => { const r = document.getElementById('movie_player')!.getBoundingClientRect(); return r.width }), { timeout: 15_000 })
+      .poll(() => h.page.evaluate(() => document.getElementById('movie_player')!.getBoundingClientRect().width), { timeout: 15_000 })
       .toBeGreaterThan(400)
   } finally {
     await h.close()

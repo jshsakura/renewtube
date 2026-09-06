@@ -73,24 +73,6 @@ export function findPlayer(): YtPlayer | null {
   return el as YtPlayer
 }
 
-/**
- * Whether the player can show a picture where it is.
- *
- * Both sites keep a player alive under their home page for previews: the
- * desktop inside a hidden <ytd-watch-flexy>, the mobile site inside a
- * display: none #player. Either plays sound, so a track pressed on 홈 used to
- * play through it, and 영상 mode then had nothing to show: an element under a
- * display: none ancestor has no box at all. Measured 2026-09-06 on both
- * (video 0x0 under /, a real box under /watch). Asked of the layout rather
- * than of any element name, so it holds for whatever container the page
- * uses next: a player with no client rect is not on stage. Our own hiding
- * of the page is by visibility, which leaves rects in place, so this cannot
- * mistake our sheet for YouTube's.
- */
-export function playerOnStage(el: Element): boolean {
-  return el.getClientRects().length > 0
-}
-
 /** Resolves when the player exists, or with null after `timeoutMs`. */
 export function waitForPlayer(timeoutMs = 20_000): Promise<YtPlayer | null> {
   return new Promise((resolve) => {

@@ -215,6 +215,20 @@ ytd-app > ytd-popup-container {
   display: none !important;
 }
 
+/* The player's own hidden ancestors, unhidden.
+ *
+ * Both sites keep a player alive under the home page for previews and hide it
+ * with the hidden attribute on an ancestor: the desktop on <ytd-watch-flexy>,
+ * the mobile site on #player (measured 2026-09-06). A player under
+ * display: none has no box, so a track pressed on 홈 played as sound with
+ * nothing to show in 영상 mode. Going to the watch page instead cost a page
+ * load, and on an iPhone the arrival cannot start itself, so it cost the
+ * press as well. This puts the ancestor back in the flow: the picture gets a
+ * box where it stands, the address never changes, and the press that chose
+ * the track is the gesture that starts it. Everything else on the page is
+ * still hidden by visibility, so nothing but the player comes back with it. */
+body [hidden]:has(#movie_player) { display: block !important; }
+
 /* And then everything else, without naming it.
  *
  * The list above is a guess at YouTube's furniture, and a guess is what let a

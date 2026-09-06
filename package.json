@@ -16,7 +16,8 @@
     "test": "npm run build && playwright test",
     "site": "node scripts/site.mjs",
     "shots": "npm run build && SHOT_DIR=site npx playwright test --config=playwright.tools.ts shots",
-    "page": "npx playwright test --config=playwright.tools.ts page-shot"
+    "page": "npx playwright test --config=playwright.tools.ts page-shot",
+    "test:webkit": "npm run build && playwright test --config=playwright.webkit.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",

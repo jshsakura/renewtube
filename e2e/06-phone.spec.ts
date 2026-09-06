@@ -465,3 +465,28 @@ test('the gear on the mobile player opens YouTube own sheet, and it can be seen'
     await context.close()
   }
 })
+
+test('on the mobile site a track pressed on home plays where it is, and 영상 mode has a picture', async () => {
+  const { context, page } = await mobileSite()
+  try {
+    await page.goto('https://m.youtube.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    const ui = page.locator('oc-easy-mode')
+    await expect(ui.locator('.app.narrow')).toBeVisible({ timeout: 60_000 })
+    // m.youtube.com keeps a player under its home inside #player[hidden]. The
+    // sheet unhides that ancestor, so the press plays here: no page load, no
+    // address change, and the press itself is the gesture WebKit wants.
+    await ui.locator('.tile:not([aria-hidden])').first().click()
+    await ui.locator('.rows .row:not([aria-hidden])').nth(1).locator('.meta').click()
+    await expect
+      .poll(() => page.evaluate(() => { const v = document.querySelector('video'); return v && !v.paused && v.currentTime > 0.5 }), { timeout: 20_000 })
+      .toBe(true)
+    expect(new URL(page.url()).pathname).toBe('/')
+    await ui.locator('.bar .now').click()
+    await ui.locator('button[title="화면 보기"]:visible').first().click()
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector('video')!.getBoundingClientRect().width), { timeout: 15_000 })
+      .toBeGreaterThan(300)
+  } finally {
+    await context.close()
+  }
+})
