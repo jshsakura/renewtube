@@ -686,7 +686,7 @@ input { font: inherit; color: inherit; }
 .card .s, .tile .s { margin-top: 2px; padding: 0 10px 10px; color: var(--muted-foreground); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 
-.shelf { margin-bottom: 36px; }
+.shelf { margin-bottom: 36px; position: relative; }
 .shelf h3 { margin: 0 0 14px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
 /* A shelf runs edge to edge. It used to stop at the pane's padding and fade
    its last centimetre into nothing, and the owner asked for the width instead
@@ -706,6 +706,40 @@ input { font: inherit; color: inherit; }
 .shelfRow.dragging * { pointer-events: none; }
 /* Scrolled to the end there is nothing beyond, so nothing fades. */
 .shelfRow:not(:hover) { scroll-behavior: smooth; }
+/* The two buttons that say there is more of the row (drag.ts builds them).
+   Over the row's own edges rather than beside it, because the row is pulled
+   out to the pane's edges above and there is no beside left to use.
+   They sit above the cards and take the press themselves; the row keeps its
+   drag, because a press that lands on a button never reaches it. */
+.shelfArrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 40px; height: 40px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--glass-line); border-radius: 999px;
+  background: var(--glass); color: var(--foreground);
+  box-shadow: 0 2px 10px rgb(0 0 0 / .18);
+  opacity: 0; transition: opacity var(--ease), background var(--ease);
+}
+/* The hidden property has to be said out loud here. The browser's own rule is
+   display:none, but the display above is an author rule and beats it, so the
+   button went on showing at the start of a row with nowhere to go back to.
+   Caught by looking at it: the test asserted the property, which was right. */
+.shelfArrow[hidden] { display: none; }
+.shelfArrow.back { left: -8px; }
+.shelfArrow.back svg { transform: rotate(180deg); }
+.shelfArrow.on { right: -8px; }
+.shelfArrow:hover { background: var(--card); }
+/* Shown while the pointer is anywhere on the shelf, and while one has the
+   focus, so a keyboard is never chasing something invisible. A shelf with
+   nowhere to go that way hides its button outright, with the hidden property,
+   which beats a dimmed one that never becomes usable. */
+.shelf:hover .shelfArrow, .shelfArrow:focus-visible { opacity: 1; }
+/* A finger has the whole row already, and a 40px disc over the cards on a
+   phone would only be something to hit by accident. */
+.app.narrow .shelfArrow { display: none; }
+@media (hover: none) {
+  .shelfArrow { display: none; }
+}
 .tile { width: 176px; flex: none; scroll-snap-align: start; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 28px 16px; }
 .grid .tile { width: auto; }

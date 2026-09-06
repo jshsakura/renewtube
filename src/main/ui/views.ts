@@ -7,7 +7,7 @@ import { thumbnail, type Playlist, type Shelf, type Track } from '../parse.ts'
 import { forgetHistory, history, setSubsFilter, subsFilter} from '../store.ts'
 import { KIDS, LEARNING_FEED, MENU, topicTitle } from '../menu.ts'
 import { art, h, icon, replace } from './dom.ts'
-import { makeDraggable } from './drag.ts'
+import { makeDraggable, shelfArrows } from './drag.ts'
 import { explain, isSignedOut, type Ctx, type View } from './ctx.ts'
 import { confirm, showMenu } from './overlay.ts'
 import { removeFromPlaylistNow, row, startRadio } from './rows.ts'
@@ -506,9 +506,10 @@ function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): 
     shelf.playlists.map((p) => playlistTile(ctx, p)),
     tracks.map((_, i) => trackTile(ctx, tracks, i)),
   )
-  // A mouse can pull the row sideways; a finger always could.
+  // A mouse can pull the row sideways or turn the wheel on it; a finger always
+  // could. The arrows are what say so.
   makeDraggable(row)
-  const section = h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row)
+  const section = h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row, ...shelfArrows(row))
 
   let token = shelf.continuation
   let busy = false

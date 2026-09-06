@@ -240,3 +240,77 @@ test('left from the first card reaches the sidebar', async () => {
     await h.close()
   }
 })
+
+test('the wheel turns a shelf sideways, and lets the page have it at the end', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '음악' }).click()
+    const row = ui.locator('.shelf:not([aria-hidden]) .shelfRow').first()
+    await expect(row.locator('.tile').first()).toBeVisible()
+    // Only a row with somewhere to go can answer this; a shelf that fits is
+    // not a failure, it is a shelf that fits.
+    const overflows = await row.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
+    test.skip(!overflows, 'this shelf has nothing past its edge')
+
+    const left = () => row.evaluate((el) => el.scrollLeft)
+    const box = (await row.boundingBox())!
+    await h.page.mouse.move(box.x + box.width / 2, box.y + 40)
+    await h.page.mouse.wheel(0, 300)
+    await expect.poll(left).toBeGreaterThan(100)
+
+    // At the end the wheel belongs to the page again. Without this the reader
+    // is stopped half way down a screen of shelves with nothing to say why.
+    await row.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth
+    })
+    await h.page.waitForTimeout(300)
+    const wall = await left()
+    const main = ui.locator('.main')
+    const before = await main.evaluate((el) => el.scrollTop)
+    await h.page.mouse.move(box.x + box.width / 2, box.y + 40)
+    await h.page.mouse.wheel(0, 400)
+    await expect.poll(() => main.evaluate((el) => el.scrollTop)).toBeGreaterThan(before)
+    expect(await left()).toBe(wall)
+  } finally {
+    await h.close()
+  }
+})
+
+test('the arrows say a shelf has more, and only where there is more', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '음악' }).click()
+    const shelf = ui.locator('.shelf:not([aria-hidden])').first()
+    const row = shelf.locator('.shelfRow')
+    await expect(row.locator('.tile').first()).toBeVisible()
+    const overflows = await row.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
+    test.skip(!overflows, 'this shelf has nothing past its edge')
+
+    // At the start there is nowhere to go back to, so that one is not drawn.
+    //
+    // Asked of the computed display rather than of the `hidden` property, and
+    // that is the whole point of the assertion: the property was set correctly
+    // all along while the button went on showing, because the stylesheet's own
+    // `display` beat the browser's [hidden] rule. A test that read the
+    // property passed on a screen that was visibly wrong (2026-09-06).
+    const back = shelf.locator('.shelfArrow.back')
+    const forward = shelf.locator('.shelfArrow.on')
+    const drawn = (el: HTMLElement) => getComputedStyle(el).display !== 'none'
+    await row.evaluate((el) => {
+      el.scrollLeft = 0
+    })
+    await expect.poll(() => back.evaluate(drawn)).toBe(false)
+    await expect.poll(() => forward.evaluate(drawn)).toBe(true)
+
+    // Pressing it moves the row, and then there is a way back.
+    await forward.click()
+    await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100)
+    await expect.poll(() => back.evaluate(drawn)).toBe(true)
+  } finally {
+    await h.close()
+  }
+})
