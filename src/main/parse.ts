@@ -215,6 +215,26 @@ function setVideoIdOf(node: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * A members-only or paid video: playable only by a member or a buyer, so from
+ * this browser it will not play at all ("프리미엄만 재생가능한 회원제영상은
+ * 치워주고"). YouTube marks it with a badge — the style on the classic
+ * renderers, the label text on the newer ones. Treated as unavailable so the
+ * feed sieve (keep() in views.ts) drops it and a queue row shows it dead.
+ */
+function membersOnly(item: Json): boolean {
+  for (const badge of collect(item, 'metadataBadgeRenderer')) {
+    if (!isObject(badge)) continue
+    const style = typeof badge.style === 'string' ? badge.style : ''
+    if (style === 'BADGE_STYLE_TYPE_MEMBERS_ONLY' || style === 'BADGE_STYLE_TYPE_YPC') return true
+    if (/회원 전용|멤버십|members? only/i.test(text(badge.label))) return true
+  }
+  for (const badge of collect(item, 'thumbnailBadgeViewModel')) {
+    if (isObject(badge) && /회원 전용|멤버십|members? only/i.test(text(badge.text))) return true
+  }
+  return false
+}
+
 /** Search results and the classic list rows: `videoRenderer`, `playlistVideoRenderer`. */
 function tracksFromVideoRenderers(root: unknown, key: string): Track[] {
   const out: Track[] = []
@@ -228,7 +248,7 @@ function tracksFromVideoRenderers(root: unknown, key: string): Track[] {
       duration: text(item.lengthText),
       setVideoId: typeof item.setVideoId === 'string' ? item.setVideoId : setVideoIdOf(item),
       channelId: channelIdOf(item),
-      unavailable: item.isPlayable === false,
+      unavailable: item.isPlayable === false || membersOnly(item),
     })
   }
   return out
@@ -263,7 +283,7 @@ function tracksFromTiles(root: unknown): Track[] {
       // not a byline and would read as one if both were taken.
       byline: text(findFirst(lines[0], 'text')),
       duration: text(findFirst(item.header, 'thumbnailOverlayTimeStatusRenderer') && findFirst(findFirst(item.header, 'thumbnailOverlayTimeStatusRenderer'), 'text')),
-      unavailable: false,
+      unavailable: membersOnly(item),
     })
   }
   return out
@@ -282,7 +302,7 @@ function tracksFromQueue(root: unknown): Track[] {
       byline: text(item.shortBylineText) || text(item.longBylineText),
       duration: text(item.lengthText),
       setVideoId: typeof item.playlistSetVideoId === 'string' ? item.playlistSetVideoId : undefined,
-      unavailable: item.unplayableText !== undefined,
+      unavailable: item.unplayableText !== undefined || membersOnly(item),
     })
   }
   return out
@@ -336,7 +356,7 @@ function tracksFromLockups(root: unknown): Track[] {
       duration: lockupBadge(item),
       setVideoId: setVideoIdOf(item),
       channelId: channelIdOf(item),
-      unavailable: false,
+      unavailable: membersOnly(item),
     })
   }
   return out
