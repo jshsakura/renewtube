@@ -41,6 +41,34 @@ test('opening a shelf card opens that playlist', async () => {
   }
 })
 
+test('a shelf can be dragged sideways with the mouse, and the drag is not a press', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '음악' }).click()
+    const row = ui.locator('.shelf:not([aria-hidden]) .shelfRow').first()
+    await expect(row.locator('.tile').first()).toBeVisible()
+    const before = await row.evaluate((el) => el.scrollLeft)
+    const box = (await row.boundingBox())!
+    // Press on a card, travel left, let go: the row moves and nothing opens.
+    const heading = await ui.locator('.head h2, .main h2').first().textContent().catch(() => null)
+    await h.page.mouse.move(box.x + box.width * 0.6, box.y + 40)
+    await h.page.mouse.down()
+    for (let i = 1; i <= 8; i++) await h.page.mouse.move(box.x + box.width * 0.6 - i * 40, box.y + 40)
+    await h.page.mouse.up()
+    await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(before + 100)
+    await h.page.waitForTimeout(300)
+    await expect(row.locator('.tile').first()).toBeVisible()
+    expect(await ui.locator('.head h2, .main h2').first().textContent().catch(() => null)).toBe(heading)
+    // And a plain press still opens the card.
+    await row.locator('.tile:not([aria-hidden])').first().click()
+    await expect(ui.locator('.row:not([aria-hidden])').first()).toBeVisible()
+  } finally {
+    await h.close()
+  }
+})
+
 test('search opens over the screen, and its answers are rows', async () => {
   const h = await open(WATCH)
   try {

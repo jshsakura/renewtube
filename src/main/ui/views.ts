@@ -7,6 +7,7 @@ import { thumbnail, type Playlist, type Shelf, type Track } from '../parse.ts'
 import { forgetHistory, history, setSubsFilter, subsFilter} from '../store.ts'
 import { KIDS, LEARNING_FEED, MENU, topicTitle } from '../menu.ts'
 import { art, h, icon, replace } from './dom.ts'
+import { makeDraggable } from './drag.ts'
 import { explain, isSignedOut, type Ctx, type View } from './ctx.ts'
 import { confirm, showMenu } from './overlay.ts'
 import { removeFromPlaylistNow, row, startRadio } from './rows.ts'
@@ -486,17 +487,15 @@ function playlistTile(ctx: Ctx, p: Playlist): HTMLElement {
 
 /** A titled row that scrolls sideways. */
 function shelfRow(ctx: Ctx, shelf: Shelf): HTMLElement {
-  return h(
-    'section',
-    { class: 'shelf' },
-    shelf.title && h('h3', null, shelf.title),
-    h(
-      'div',
-      { class: 'shelfRow' },
-      shelf.playlists.map((p) => playlistTile(ctx, p)),
-      shelf.tracks.map((_, i) => trackTile(ctx, shelf.tracks, i)),
-    ),
+  const row = h(
+    'div',
+    { class: 'shelfRow' },
+    shelf.playlists.map((p) => playlistTile(ctx, p)),
+    shelf.tracks.map((_, i) => trackTile(ctx, shelf.tracks, i)),
   )
+  // A mouse can pull the row sideways; a finger always could.
+  makeDraggable(row)
+  return h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row)
 }
 
 /**

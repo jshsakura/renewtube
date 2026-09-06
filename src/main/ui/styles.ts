@@ -1686,6 +1686,17 @@ input[type=range]::-moz-range-thumb {
 .seg button.segOn { color: var(--primary-foreground); background: var(--primary); }
 /* The keys, printed. A two-column list rather than a table, because every row
    is one name and one key and nothing ever spans. */
+.diagBox { display: flex; flex-direction: column; gap: 8px; }
+.diagActs { display: flex; gap: 8px; }
+.diagActs .setLink { flex: 1; }
+/* Text, small and wrapping, so a phone can read and copy it in place. */
+.diag {
+  margin: 0; padding: 10px 12px; max-height: 40vh; overflow: auto;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;
+  background: var(--glass); border: 1px solid var(--glass-line); border-radius: 8px;
+  color: var(--muted-foreground);
+}
 .keyList {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: 8px 16px; margin: 0; font-size: 13.5px;
