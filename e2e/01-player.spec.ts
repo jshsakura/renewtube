@@ -35,47 +35,32 @@ test('search returns tracks, and choosing one drives the page\'s player', async 
   }
 })
 
-test('music mode shows no picture, and the bar button brings the stage over the slot', async () => {
+test('the picture button opens a Picture-in-Picture window on the desktop, and closes it', async () => {
   const h = await open(WATCH)
   try {
     const ui = app(h.page)
     await expect(ui.locator('.app')).toBeVisible()
-
-    // Something has to be playing for there to be a picture at all: it is
-    // shown while a track is loaded and gone when none is.
     const over = await searchFor(h.page, 'lofi')
     await over.locator('.row:not([aria-hidden])').first().click()
-
-    const rects = async () =>
-      h.page.evaluate(() => {
-        const host = document.querySelector('oc-easy-mode')!
-        const slot = host.shadowRoot!.querySelector('.slot')!.getBoundingClientRect()
-        const player = document.getElementById('movie_player')!.getBoundingClientRect()
-        return { slot: [slot.x, slot.y, slot.width, slot.height], player: [player.x, player.y, player.width, player.height] }
-      })
-
-    // Music mode shows no picture: the slot is drawn hidden and the player
-    // is parked out of sight. The corner window that used to appear here was
-    // taken for a stray PiP, and is gone.
-    await expect(ui.locator('.slot')).toHaveClass(/hidden/)
-    // The bar's own button brings the stage; the player follows the slot.
-    await ui.locator('.bar .vid').click()
-    await expect(ui.locator('.slot')).toHaveClass(/stage/)
+    // The picture only goes to a window once the video is actually playing.
     await expect
-      .poll(async () => {
-        const r = await rects()
-        return r.slot[2]! > 400 && r.slot.every((v, i) => Math.abs(v - r.player[i]!) < 2)
-      })
+      .poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return !!v && !v.paused && v.currentTime > 0.3 }), { timeout: 20_000 })
       .toBe(true)
-    // And back to sound only: one press, since the button is a 소리만 ↔ 영상 toggle.
-    await ui.locator('.bar .vid').click()
+    // No stage of ours on the desktop; the picture is a native PiP window.
     await expect(ui.locator('.slot')).toHaveClass(/hidden/)
+    await ui.locator('.bar .vid').click()
+    await expect
+      .poll(() => h.page.evaluate(() => document.pictureInPictureElement?.tagName ?? null), { timeout: 10_000 })
+      .toBe('VIDEO')
+    await expect(ui.locator('.bar .vid')).toHaveClass(/on/)
+    // And the same button closes it.
+    await ui.locator('.bar .vid').click()
+    await expect.poll(() => h.page.evaluate(() => document.pictureInPictureElement !== null)).toBe(false)
   } finally {
     await h.close()
   }
 })
-
-test('a track pressed on the home page plays where it is, and 영상 mode has a picture', async () => {
+test('a track pressed on the home page plays where it is, and the desktop picture is a PiP window', async () => {
   const h = await open('https://www.youtube.com/')
   try {
     const ui = app(h.page)
@@ -90,11 +75,13 @@ test('a track pressed on the home page plays where it is, and 영상 mode has a 
       .poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v && !v.paused && v.currentTime > 0.5 }), { timeout: 20_000 })
       .toBe(true)
     expect(new URL(h.page.url()).pathname).toBe('/')
+    // The picture goes to a Picture-in-Picture window on the desktop, not a
+    // stage of ours, and the address still never changed.
     await ui.locator('.bar .vid').click()
-    await expect(ui.locator('.slot')).toHaveClass(/stage/)
     await expect
-      .poll(() => h.page.evaluate(() => document.getElementById('movie_player')!.getBoundingClientRect().width), { timeout: 15_000 })
-      .toBeGreaterThan(400)
+      .poll(() => h.page.evaluate(() => document.pictureInPictureElement?.tagName ?? null), { timeout: 10_000 })
+      .toBe('VIDEO')
+    expect(new URL(h.page.url()).pathname).toBe('/')
   } finally {
     await h.close()
   }
@@ -135,46 +122,6 @@ test('the queue advances and the mode survives it', async () => {
     // Still in our UI, still one host, YouTube still hidden.
     await expect(ui.locator('.app')).toBeVisible()
     await expect(h.page.locator('oc-easy-mode')).toHaveCount(1)
-  } finally {
-    await h.close()
-  }
-})
-
-test('the picture is on top of the app, and out of the way when it is not wanted', async () => {
-  const h = await open(WATCH)
-  try {
-    const ui = app(h.page)
-    await expect(ui.locator('.app')).toBeVisible()
-
-    // Placing the player over the stage is not enough: our own panel painted
-    // over it, and the stage came out a black rectangle with the video playing
-    // underneath. Geometry alone never caught it — the rects matched exactly
-    // the whole time — so this asks the page who is actually on top.
-    await ui.locator('.bar .vid').click()
-    await expect(ui.locator('.slot')).toHaveClass(/stage/)
-
-    const topOfStage = async () =>
-      h.page.evaluate(() => {
-        const slot = document.querySelector('oc-easy-mode')!.shadowRoot!.querySelector('.slot')!
-        const b = slot.getBoundingClientRect()
-        const top = document.elementsFromPoint(b.x + b.width / 2, b.y + b.height / 2)[0]
-        return top ? top.tagName : ''
-      })
-    await expect.poll(topOfStage).not.toBe('OC-EASY-MODE')
-
-    // And with no picture asked for, nothing of the player may show: it is
-    // parked behind the app, which only works while the app is above it.
-    await ui.locator('.bar .vid').click()
-    await expect(ui.locator('.slot')).toHaveClass(/hidden/)
-    await expect
-      .poll(async () =>
-        h.page.evaluate(() => {
-          const p = document.getElementById('movie_player')!.getBoundingClientRect()
-          const top = document.elementsFromPoint(p.x + p.width / 2, p.y + p.height / 2)[0]
-          return top ? top.tagName : ''
-        }),
-      )
-      .toBe('OC-EASY-MODE')
   } finally {
     await h.close()
   }

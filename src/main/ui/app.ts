@@ -14,6 +14,7 @@ import type { Shell } from '../shell.ts'
 import type { VideoLayout } from '../store.ts'
 import { clearStoredTheme, dislikeRemoves, foldPlaylists, playlistsFolded, setDislikeRemoves, setStoredTheme, youtubeIsDark, type Mode, type Theme, type VideoLayout as Placement } from '../store.ts'
 import { narrowNow } from './device.ts'
+import { enterPip, exitPip, pipOpen, pipSupported } from '../pip.ts'
 import { h, icon, mark, replace } from './dom.ts'
 import { STYLES } from './styles.ts'
 import { clock, explain, type Ctx, type View } from './ctx.ts'
@@ -486,10 +487,15 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // ── The player slot ──────────────────────────────────────────────────────
 
   function setLayout(layout: VideoLayout): void {
-    // How much room the list reserves at the top *before* anything changes;
-    // compared after, the scroll is moved to match so the content does not
-    // jump and leave a blank band (hiding mid-scroll broke the screen).
-    const padBefore = Number.parseFloat(getComputedStyle(main).paddingTop) || 0
+    // Whether the stage was up before this call. Turning the picture on or off
+    // changes how much room the list reserves at the top, and leaving the
+    // scroll where it was then either buried the list under a blank band
+    // (hiding mid-scroll) or shoved it down past the stage (showing) — both
+    // reported as "숨김하면 난리난다". When that reservation actually changes,
+    // the list goes back to its top, which is predictable and never blank; when
+    // it does not (a track auto-advancing while the stage stays up), the scroll
+    // is left exactly where the reader had it.
+    const stageWas = app.classList.contains('has-stage') || app.classList.contains('has-watch')
     // The right-hand queue needs room a phone does not have; there, watch
     // collapses to the cinema stage.
     if (narrowNow() && layout === 'watch') layout = 'stage'
@@ -501,9 +507,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     if (layout === 'watch') drawUpnext()
     document.documentElement.style.setProperty('--stage-scroll', '0px')
     seatSlot()
-    // Now the classes have settled, so the new reserved height is real.
-    const padAfter = Number.parseFloat(getComputedStyle(main).paddingTop) || 0
-    if (padAfter !== padBefore) main.scrollTop = Math.max(0, main.scrollTop - (padBefore - padAfter))
+    const stageNow = app.classList.contains('has-stage') || app.classList.contains('has-watch')
+    if (stageNow !== stageWas) main.scrollTop = 0
     // Re-measure after the slot has taken its new size, so the scroll handler
     // never has to touch layout itself.
     requestAnimationFrame(measureStage)
@@ -766,9 +771,27 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // One picture layout, 꽉 채움(영화관). The right-hand watch column was a
   // second layout to tell apart, and the owner asked to drop it and keep the
   // fill only (2026-09-07, "안되면 꽉채움만"). So the button is a plain toggle.
+  // On the desktop the picture is a Picture-in-Picture window, not a stage of
+  // ours; on a phone (no native PiP to rely on) it is still the stage.
   const videoOrder = (): Placement[] => ['hidden', 'stage']
   const videoButton = h('button', { class: 'vid', 'data-nav': '', title: t('화면 보기') }, icon('video', 18))
   videoButton.addEventListener('click', () => {
+    if (!narrowNow() && pipSupported()) {
+      if (pipOpen()) {
+        engine.setMode('music')
+        void exitPip().then(() => drawBar())
+      } else {
+        engine.setMode('video')
+        // The window opens a beat later, so the button's lit state is redrawn
+        // when the request resolves, not only now.
+        void enterPip(() => {
+          engine.setMode('music')
+          drawBar()
+        }).then(() => drawBar())
+      }
+      drawBar()
+      return
+    }
     const order = videoOrder()
     const next = order[(order.indexOf(engine.state.video) + 1) % order.length]!
     engine.setMode(next === 'hidden' ? 'music' : 'video')
@@ -1084,10 +1107,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // 영화관 on a phone. The glyph and title name what the next press does.
     // Two states: 소리만(hidden) and 영상(stage, 꽉 채움). The glyph names the
     // next press — a camera to show the picture, a crossed camera to hide it.
-    const where = engine.state.video
-    replace(videoButton, icon(where === 'hidden' ? 'video' : 'videoOff', 18))
-    videoButton.className = where === 'hidden' ? 'vid' : 'vid on'
-    videoButton.title = where === 'hidden' ? t('화면 보기') : t('소리만 듣기')
+    const picture = !narrowNow() && pipSupported() ? pipOpen() : engine.state.video !== 'hidden'
+    replace(videoButton, icon(picture ? 'videoOff' : 'video', 18))
+    videoButton.className = picture ? 'vid on' : 'vid'
+    videoButton.title = picture ? t('소리만 듣기') : t('화면 보기')
     prevButton.disabled = engine.state.queue.length === 0
     nextButton.disabled = engine.state.queue.length === 0
     loadRating()
@@ -1316,7 +1339,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    */
   function pictureNow(): VideoLayout {
     if (!engine.current) return 'hidden'
-    if (engine.state.mode === 'video') return 'stage'
+    if (engine.state.mode === 'video') return narrowNow() ? 'stage' : 'hidden'
     // Music: nothing at all. The corner window a desktop used to get here was
     // a window over the list being read, with YouTube's controls on it, and
     // was taken for a stray PiP (2026-09-06). Leaving the stage up with the
