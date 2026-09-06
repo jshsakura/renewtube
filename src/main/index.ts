@@ -12,6 +12,7 @@ import { pickLang, setLang, t } from '../shared/i18n.ts'
 import * as api from './api.ts'
 import { Engine } from './engine.ts'
 import { bindMediaSession } from './session.ts'
+import { keepAwake } from './awake.ts'
 import { InnertubeError } from './innertube.ts'
 import type { Playlist, Track } from './parse.ts'
 import { videoIdInUrl, waitForPlayer } from './player.ts'
@@ -202,6 +203,9 @@ async function start(): Promise<void> {
     // The lock screen and the headphone buttons, pointed at our queue rather
     // than at YouTube's autoplay.
     const unbindSession = bindMediaSession(engine)
+    // Keep the page reporting itself visible, so YouTube does not pause the
+    // moment the tab goes to the background.
+    const wake = keepAwake()
 
     running = {
       shell,
@@ -209,6 +213,7 @@ async function start(): Promise<void> {
       destroy() {
         app.destroy()
         unbindSession()
+        wake()
         engine.detach()
       },
     }
