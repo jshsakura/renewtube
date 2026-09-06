@@ -700,6 +700,10 @@ input { font: inherit; color: inherit; }
   scrollbar-width: none;
 }
 .shelfRow::-webkit-scrollbar { height: 0; }
+/* A mouse can drag the row (drag.ts). The hand says so, and while it holds
+   the row no card may become a link being dragged or text being selected. */
+.shelfRow.dragging { cursor: grabbing; scroll-behavior: auto; user-select: none; }
+.shelfRow.dragging * { pointer-events: none; }
 /* Scrolled to the end there is nothing beyond, so nothing fades. */
 .shelfRow:not(:hover) { scroll-behavior: smooth; }
 .tile { width: 176px; flex: none; scroll-snap-align: start; }

@@ -158,4 +158,5 @@ export const EN: Record<string, string> = {
   "진단": "Diagnostics",
   "화면 진단": "Screen diagnostics",
   "복사": "Copy",
+  "복사했습니다": "Copied",
 }

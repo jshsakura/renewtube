@@ -9,7 +9,7 @@
 // All three are self-contained IIFEs: a content script is not loaded as a
 // module, and the popup gains nothing from being one.
 
-import { cpSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import * as esbuild from 'esbuild'
 
@@ -43,6 +43,8 @@ const options = {
   sourcemap: watch ? 'inline' : false,
   legalComments: 'none',
   logLevel: 'info',
+  // The version, for the diagnosis screen; see src/shared/version.ts.
+  define: { __RENEWTUBE_VERSION__: JSON.stringify(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version) },
   plugins: [{ name: 'oc-static', setup(build) { build.onEnd(copyStatic) } }],
 }
 

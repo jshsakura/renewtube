@@ -158,4 +158,5 @@ export const VI: Record<string, string> = {
   "진단": "Chẩn đoán",
   "화면 진단": "Chẩn đoán màn hình",
   "복사": "Sao chép",
+  "복사했습니다": "Đã sao chép",
 }

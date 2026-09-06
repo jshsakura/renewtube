@@ -17,6 +17,8 @@ import { SHORTCUTS } from './keys.ts'
 import { MENU, menuOn, type MenuLine } from '../menu.ts'
 import { YOUTUBE_PAGES, youtubeUrl, type YouTubePage } from '../ytsettings.ts'
 import { h, icon } from './dom.ts'
+import { diagnose } from './diagnose.ts'
+import { version } from '../../shared/version.ts'
 import type { Ctx } from './ctx.ts'
 import { holdModal, modalClass, modalHead } from './overlay.ts'
 
@@ -117,6 +119,38 @@ export function openSettings(ctx: Ctx, actions: SettingsActions): void {
 
   const body = h('div', { class: 'setBody' })
 
+  /** The report stays across redraws once it has been asked for. */
+  let report: string | undefined
+  function diagRow(): HTMLElement {
+    const pre = h('pre', { class: 'diag', hidden: report === undefined || undefined }, report ?? '')
+    const run = () => {
+      report = diagnose(ctx.engine, version())
+      pre.textContent = report
+      pre.hidden = false
+    }
+    const copy = async () => {
+      if (report === undefined) run()
+      try {
+        await navigator.clipboard.writeText(report!)
+        ctx.say(t('복사했습니다'))
+      } catch {
+        // No clipboard here; the text is on screen to select.
+        pre.hidden = false
+      }
+    }
+    return h(
+      'div',
+      { class: 'diagBox' },
+      h(
+        'div',
+        { class: 'diagActs' },
+        h('button', { class: 'setLink', 'data-nav': '', onclick: run }, h('span', null, t('화면 진단')), icon('search', 16)),
+        h('button', { class: 'setLink', 'data-nav': '', onclick: () => void copy() }, h('span', null, t('복사')), icon('check', 16)),
+      ),
+      pre,
+    )
+  }
+
   /**
    * Redraws the body, and puts the focus back where it was: the whole body is
    * rebuilt on every choice, and a remote that had the theme under its thumb
@@ -198,6 +232,11 @@ export function openSettings(ctx: Ctx, actions: SettingsActions): void {
         { class: 'keyList' },
         SHORTCUTS.map((s) => [h('dt', null, t(s.label)), h('dd', null, h('kbd', null, s.keys))]),
       ),
+      // The screen in words, for a report from a phone. Pressed, it prints
+      // what is on top, where the player is and what its element is doing,
+      // and the text can be copied. See diagnose.ts.
+      h('h4', { class: 'setGroup' }, t('진단')),
+      diagRow(),
     )
     ;(body.querySelector<HTMLElement>(focus ?? '.setLink') ?? body.querySelector<HTMLElement>('[data-nav]'))?.focus()
   }

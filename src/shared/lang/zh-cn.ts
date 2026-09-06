@@ -158,4 +158,5 @@ export const ZH_CN: Record<string, string> = {
   "진단": "诊断",
   "화면 진단": "屏幕诊断",
   "복사": "复制",
+  "복사했습니다": "已复制",
 }

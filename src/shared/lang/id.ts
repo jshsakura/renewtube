@@ -158,4 +158,5 @@ export const ID: Record<string, string> = {
   "진단": "Diagnostik",
   "화면 진단": "Diagnostik layar",
   "복사": "Salin",
+  "복사했습니다": "Disalin",
 }

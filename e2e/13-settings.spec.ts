@@ -91,6 +91,29 @@ test('the sheet surfaces the settings that already exist', async () => {
   }
 })
 
+test('화면 진단 prints the screen in words, and the text is the report', async () => {
+  const h = await open('https://www.youtube.com/')
+  try {
+    const over = await openSettings(h.page)
+    const sheet = over.locator('.modal.settings')
+    const pre = sheet.locator('.diag')
+    await expect(pre).toBeHidden()
+    await sheet.locator('.setLink', { hasText: '화면 진단' }).click()
+    await expect(pre).toBeVisible()
+    const text = (await pre.textContent()) ?? ''
+    // The four answers a report needs: version and screen, the player and
+    // its element, the ancestors, and what is on top.
+    expect(text).toMatch(/^RenewTube \d+\.\d+\.\d+/)
+    expect(text).toContain('플레이어 위치:')
+    expect(text).toContain('플레이어 조상:')
+    expect(text).toContain('맨 위에 있는 것:')
+    expect(text).toContain('video:')
+    expect(text).toContain('광고:')
+  } finally {
+    await h.close()
+  }
+})
+
 test('the sheet is reachable on a phone too', async () => {
   const h = await open('https://www.youtube.com/')
   try {

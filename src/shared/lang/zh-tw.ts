@@ -158,4 +158,5 @@ export const ZH_TW: Record<string, string> = {
   "진단": "診斷",
   "화면 진단": "畫面診斷",
   "복사": "複製",
+  "복사했습니다": "已複製",
 }
