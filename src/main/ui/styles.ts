@@ -585,6 +585,17 @@ input { font: inherit; color: inherit; }
 .card:active, .tile:active, .card:focus-visible, .tile:focus-visible { background: var(--secondary-hover); }
 /* Top-right of the artwork, where a card's own play button is not. Always
    visible on touch — a card has no hover to wait for. */
+.tileMenu {
+  position: absolute; left: 8px; top: 8px; z-index: 2;
+  width: 30px; height: 30px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: oklch(0 0 0 / 55%); color: #fff; cursor: pointer;
+  opacity: 0; transition: opacity var(--ease), background var(--ease);
+}
+.card:hover .tileMenu, .tile:hover .tileMenu,
+.card:focus-within .tileMenu, .tile:focus-within .tileMenu { opacity: 1; }
+.tileMenu:hover { background: oklch(0 0 0 / 75%); }
+@media (hover: none) { .tileMenu { opacity: 1; } }
 .tileAdd {
   position: absolute; right: 8px; top: 8px; z-index: 2;
   width: 30px; height: 30px; border-radius: var(--radius-md);

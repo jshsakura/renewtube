@@ -4,12 +4,12 @@
 import { t, tn } from '../../shared/i18n.ts'
 import * as api from '../api.ts'
 import { thumbnail, type Playlist, type Shelf, type Track } from '../parse.ts'
-import { forgetHistory, history, setSubsFilter, subsFilter} from '../store.ts'
+import { forgetHistory, hideChannel, history, isChannelHidden, setSubsFilter, subsFilter } from '../store.ts'
 import { KIDS, LEARNING_FEED, MENU, topicTitle } from '../menu.ts'
 import { art, h, icon, replace } from './dom.ts'
 import { makeDraggable, shelfArrows } from './drag.ts'
 import { explain, isSignedOut, type Ctx, type View } from './ctx.ts'
-import { confirm, showMenu } from './overlay.ts'
+import { confirm, showMenu, toast } from './overlay.ts'
 import { removeFromPlaylistNow, row, startRadio } from './rows.ts'
 import { applyFilter, channelsOf, chooseChannels } from './channels.ts'
 import { makeSortable } from './sortable.ts'
@@ -109,7 +109,7 @@ function mergeById(...lists: Track[][]): Track[] {
 function listOf(ctx: Ctx, first: api.Page, shape: Shape = feedShape(ctx), lead: Track[] = []): HTMLElement {
   const rows = h('div', { class: 'rows' })
   let page = first
-  let all = mergeById(lead, first.tracks)
+  let all = keep(mergeById(lead, first.tracks))
 
   const more = h('button', { class: 'btn ghost', 'data-nav': '', style: 'margin: 16px auto 0; display: flex' }, t('더 보기'))
   more.addEventListener('click', async () => {
@@ -126,7 +126,7 @@ function listOf(ctx: Ctx, first: api.Page, shape: Shape = feedShape(ctx), lead: 
       const next = await api.more(ctx.cfg, page)
       // Through the same sieve as the first page: a video already standing
       // above, because this browser played it, must not arrive again below.
-      all = mergeById(all, next.tracks)
+      all = keep(mergeById(all, next.tracks))
       page = next
       // draw() replaces the whole container, skeletons included.
       draw()
@@ -409,6 +409,14 @@ function skFeed(ctx: Ctx, id: api.FeedId): HTMLElement {
     : skRows(6)
 }
 
+/** The overlay the tile menus anchor into, set whenever a track tile is built. */
+let rootOverlay: ShadowRoot
+
+/** Drops tracks from channels the reader chose not to see ("채널 추천 안 함"). */
+function keep(tracks: Track[]): Track[] {
+  return tracks.some((tr) => isChannelHidden(tr.channelId)) ? tracks.filter((tr) => !isChannelHidden(tr.channelId)) : tracks
+}
+
 function tile(opts: {
   cover?: string
   title: string
@@ -418,6 +426,8 @@ function tile(opts: {
   square?: boolean
   /** The one-press action, drawn on the artwork. Cards had none. */
   quick?: { icon: Parameters<typeof icon>[0]; title: string; run(): void }
+  /** The options behind a ⋯ on the artwork, opposite the quick action. */
+  menu?: () => Array<Parameters<typeof showMenu>[2][number]>
   onOpen(): void
 }): HTMLElement {
   return h(
@@ -457,6 +467,27 @@ function tile(opts: {
           })
           return b
         })(),
+      // The options button, opposite the quick add. A ⋯ that opens a menu of
+      // the things a card could not offer before — play next, radio, and the
+      // curation the owner asked for: 관심 없음 and 채널 추천 안 함.
+      opts.menu &&
+        (() => {
+          const b = h(
+            'span',
+            { class: 'tileMenu', role: 'button', tabindex: '0', 'data-nav': '', title: t('옵션'), 'aria-label': t('옵션') },
+            icon('more', 16),
+          )
+          const openIt = (ev: Event) => {
+            ev.stopPropagation()
+            ev.preventDefault()
+            showMenu(rootOverlay, b, opts.menu!(), opts.title)
+          }
+          b.addEventListener('click', openIt)
+          b.addEventListener('keydown', (ev) => {
+            if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') openIt(ev)
+          })
+          return b
+        })(),
     ),
     h('div', { class: 't', title: opts.title }, opts.title),
     h('div', { class: 's' }, opts.sub),
@@ -465,14 +496,45 @@ function tile(opts: {
 
 function trackTile(ctx: Ctx, list: Track[], i: number): HTMLElement {
   const track = list[i]!
+  rootOverlay = ctx.overlay
   return tile({
     cover: thumbnail(track.videoId),
     title: track.title,
     sub: track.byline,
     badge: track.duration,
     quick: { icon: 'plus', title: t('재생목록에 넣기'), run: () => void ctx.addToPlaylist([track]) },
+    menu: () => tileMenu(ctx, track),
     onOpen: () => ctx.engine.play(list, i),
   })
+}
+
+/** The card's ⋯ menu: the row's actions, plus the two curation choices. */
+function tileMenu(ctx: Ctx, track: Track): Array<Parameters<typeof showMenu>[2][number]> {
+  return [
+    { label: t('지금 재생'), icon: 'play', onSelect: () => ctx.engine.playNow([track]) },
+    { label: t('다음에 재생'), icon: 'queue', onSelect: () => { ctx.engine.playNext([track]); ctx.say(t('다음에 재생합니다.')) } },
+    { label: t('대기열에 추가'), icon: 'plus', onSelect: () => { ctx.engine.enqueue([track]); ctx.say(t('대기열에 넣었습니다.')) } },
+    '-',
+    { label: t('이 곡으로 라디오'), icon: 'radio', onSelect: () => void startRadio(ctx, track) },
+    { label: t('재생목록에 추가'), icon: 'library', onSelect: () => void ctx.addToPlaylist([track]) },
+    '-',
+    // Feeds YouTube's own recommendations; the same call the bar's 관심 없음 makes.
+    { label: t('관심 없음'), icon: 'thumbDown', onSelect: () => { void api.dislike(ctx.cfg, track.videoId).catch(() => {}); ctx.say(t('관심 없음으로 표시했습니다.')) } },
+    // A local block within RenewTube, reversible from 설정.
+    ...(track.channelId
+      ? [{ label: t('채널 추천 안 함'), icon: 'close' as const, onSelect: () => hideChannelAndRefresh(ctx, track) }]
+      : []),
+    '-',
+    { label: t('유튜브에서 열기'), icon: 'external', onSelect: () => window.open(`https://www.youtube.com/watch?v=${track.videoId}`, '_blank') },
+  ]
+}
+
+/** Blocks the track's channel and redraws so its cards leave at once. */
+function hideChannelAndRefresh(ctx: Ctx, track: Track): void {
+  if (!track.channelId) return
+  hideChannel(track.channelId)
+  toast(ctx.overlay, `${track.byline} · ${t('채널을 숨겼습니다.')}`)
+  ctx.reload()
 }
 
 function playlistTile(ctx: Ctx, p: Playlist): HTMLElement {
@@ -499,7 +561,7 @@ const SHELF_AHEAD_TILES = 3
  * cards that arrived after it. Nothing is asked for a row that came whole.
  */
 function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): HTMLElement {
-  const tracks = [...shelf.tracks]
+  const tracks = keep(shelf.tracks)
   const row = h(
     'div',
     { class: 'shelfRow' },
@@ -527,9 +589,10 @@ function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): 
       const next = await api.moreShelf(ctx.cfg, token, client)
       token = next.continuation
       const from = tracks.length
-      tracks.push(...next.tracks)
+      const fresh = keep(next.tracks)
+      tracks.push(...fresh)
       for (const el of waiting) el.remove()
-      row.append(...next.playlists.map((p) => playlistTile(ctx, p)), ...next.tracks.map((_, i) => trackTile(ctx, tracks, from + i)))
+      row.append(...next.playlists.map((p) => playlistTile(ctx, p)), ...fresh.map((_, i) => trackTile(ctx, tracks, from + i)))
       // Five more may still not reach the edge of a wide pane.
       if (row.isConnected && nearEnd()) void feed()
     } catch {
@@ -599,7 +662,7 @@ async function shelfScreen(ctx: Ctx, main: HTMLElement, title: string, load: () 
       main,
       h('h2', null, title),
       shelvesBox,
-      page.shelves.length === 0 && h('div', { class: 'grid' }, page.tracks.map((_, i) => trackTile(ctx, page.tracks, i))),
+      page.shelves.length === 0 && (() => { const g = keep(page.tracks); return h('div', { class: 'grid' }, g.map((_, i) => trackTile(ctx, g, i))) })(),
       // The rows below the fold, a page at a time. The television's list
       // carries a token for more shelves, and a screen that stopped at the
       // first four read as a short one.
@@ -692,7 +755,7 @@ async function channelVideos(ctx: Ctx, main: HTMLElement, id: string, title: str
     const page = await api.channelVideos(ctx.cfg, id)
     if (!current(token)) return
     if (page.tracks.length === 0) return replace(main, h('h2', null, title), nothing(t('보여줄 것이 없습니다.'), 'channels'))
-    const all = page.tracks
+    const all = keep(page.tracks)
     replace(
       main,
       h('h2', null, title),
@@ -770,8 +833,8 @@ async function listFeed(ctx: Ctx, main: HTMLElement, title: string, id: api.Feed
     // Minus the tracks the shelves already hold: parseTracks collects those
     // too, and a video should not be on one screen twice.
     const shelved = new Set(page.shelves.flatMap((s) => s.tracks.map((tr) => tr.videoId)))
-    const loose = page.tracks.filter((tr) => !shelved.has(tr.videoId))
-    const all = loose.length > 0 ? loose : page.tracks
+    const loose = keep(page.tracks.filter((tr) => !shelved.has(tr.videoId)))
+    const all = loose.length > 0 ? loose : keep(page.tracks)
 
     // **구독 only.** 홈 and 시청 기록 are not lists of channels you chose, and
     // narrowing them by channel would be answering a question nobody asked.

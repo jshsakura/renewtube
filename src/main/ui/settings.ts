@@ -13,6 +13,7 @@
 
 import { t } from '../../shared/i18n.ts'
 import type { Mode, Theme } from '../store.ts'
+import { hiddenChannels, unhideChannel } from '../store.ts'
 import { SHORTCUTS } from './keys.ts'
 import { MENU, menuOn, type MenuLine } from '../menu.ts'
 import { YOUTUBE_PAGES, youtubeUrl, type YouTubePage } from '../ytsettings.ts'
@@ -235,6 +236,27 @@ export function openSettings(ctx: Ctx, actions: SettingsActions): void {
       // The screen in words, for a report from a phone. Pressed, it prints
       // what is on top, where the player is and what its element is doing,
       // and the text can be copied. See diagnose.ts.
+      // Reverses 채널 추천 안 함. Shown only when something is hidden; one press
+      // clears the block and redraws.
+      ...(hiddenChannels().length > 0
+        ? [
+            h('h4', { class: 'setGroup' }, t('숨긴 채널')),
+            h(
+              'button',
+              {
+                class: 'setLink',
+                'data-nav': '',
+                onclick: () => {
+                  for (const id of hiddenChannels()) unhideChannel(id)
+                  ctx.reload()
+                  draw()
+                },
+              },
+              h('span', null, `${t('모두 다시 보이기')} (${hiddenChannels().length})`),
+              icon('check', 16),
+            ),
+          ]
+        : []),
       h('h4', { class: 'setGroup' }, t('진단')),
       diagRow(),
     )

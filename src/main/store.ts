@@ -120,6 +120,57 @@ export function setDislikeRemoves(yes: boolean): void {
  * menu.ts — so a line added to the menu later arrives at *its* default
  * rather than at whatever a stale saved list happened to hold.
  */
+/**
+ * Channels the reader chose not to see recommended ("채널 추천 안함").
+ *
+ * A local block, by `UC…` id: RenewTube filters these out of every feed and
+ * shelf it draws. It does not touch YouTube's own recommendations — a true
+ * feedback token is not carried on most of the rows this runs on — but within
+ * this player it is exactly what the words say, and it is reversible from
+ * 설정. Stored as a plain list of ids.
+ */
+const HIDDEN_CHANNELS_KEY = 'oc-easy-mode:hidden-channels'
+
+function readHiddenChannels(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_CHANNELS_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+let hiddenChannelSet: Set<string> | undefined
+function hiddenSet(): Set<string> {
+  if (!hiddenChannelSet) hiddenChannelSet = new Set(readHiddenChannels())
+  return hiddenChannelSet
+}
+
+export function hiddenChannels(): string[] {
+  return [...hiddenSet()]
+}
+
+export function isChannelHidden(id: string | undefined): boolean {
+  return id !== undefined && hiddenSet().has(id)
+}
+
+export function hideChannel(id: string): void {
+  const set = hiddenSet()
+  set.add(id)
+  try {
+    localStorage.setItem(HIDDEN_CHANNELS_KEY, JSON.stringify([...set]))
+  } catch {}
+}
+
+export function unhideChannel(id: string): void {
+  const set = hiddenSet()
+  set.delete(id)
+  try {
+    localStorage.setItem(HIDDEN_CHANNELS_KEY, JSON.stringify([...set]))
+  } catch {}
+}
+
 const MENU_KEY = 'oc-easy-mode:menu'
 
 export function menuChoices(): Record<string, boolean> {

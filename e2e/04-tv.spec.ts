@@ -23,6 +23,30 @@ test('둘러보기 comes back as titled shelves, signed out', async () => {
   }
 })
 
+test('a card carries an options menu opposite the add button, with the curation choices', async () => {
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    const over = overlay(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '음악' }).click()
+    // A track tile (not a playlist tile) is the one with a channel to hide.
+    const card = ui.locator('.shelf .tile:not([aria-hidden]):has(.tileMenu)').first()
+    await expect(card).toBeVisible({ timeout: 30_000 })
+    // Both corners: add on one, options on the other.
+    await expect(card.locator('.tileAdd')).toHaveCount(1)
+    await expect(card.locator('.tileMenu')).toHaveCount(1)
+    await card.locator('.tileMenu').click()
+    const menu = over.locator('.menu')
+    await expect(menu).toBeVisible()
+    for (const label of ['다음에 재생', '이 곡으로 라디오', '관심 없음', '유튜브에서 열기']) {
+      await expect(menu.getByText(label, { exact: true })).toBeVisible()
+    }
+  } finally {
+    await h.close()
+  }
+})
+
 test('opening a shelf card opens that playlist', async () => {
   const h = await open(WATCH)
   try {
