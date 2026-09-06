@@ -757,7 +757,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    * The list's shape follows the big one: watching is 영상, and 영상 draws
    * thumbnails.
    */
-  const videoOrder = (): Placement[] => (narrowNow() ? ['hidden', 'stage'] : ['hidden', 'stage', 'watch'])
+  // One picture layout, 꽉 채움(영화관). The right-hand watch column was a
+  // second layout to tell apart, and the owner asked to drop it and keep the
+  // fill only (2026-09-07, "안되면 꽉채움만"). So the button is a plain toggle.
+  const videoOrder = (): Placement[] => ['hidden', 'stage']
   const videoButton = h('button', { class: 'vid', 'data-nav': '', title: t('화면 보기') }, icon('video', 18))
   videoButton.addEventListener('click', () => {
     const order = videoOrder()
@@ -1073,14 +1076,12 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // what it does. Pressed, it shows the picture — so it shows a camera.
     // The cycle is 소리만 → 영화관 → 시청(대기열 곁) on a desktop, 소리만 →
     // 영화관 on a phone. The glyph and title name what the next press does.
+    // Two states: 소리만(hidden) and 영상(stage, 꽉 채움). The glyph names the
+    // next press — a camera to show the picture, a crossed camera to hide it.
     const where = engine.state.video
-    const nextGlyph = { hidden: 'video', stage: 'queue', watch: 'videoOff', corner: 'expand' } as const
-    const nextTitle = { hidden: t('화면 보기'), stage: t('대기열 함께 보기'), watch: t('소리만 듣기'), corner: t('소리만 듣기') } as const
-    // A phone has no 시청 layout, so from 영화관 the next press is 소리만.
-    const glyph = where === 'stage' && narrowNow() ? 'videoOff' : nextGlyph[where]
-    replace(videoButton, icon(glyph, 18))
+    replace(videoButton, icon(where === 'hidden' ? 'video' : 'videoOff', 18))
     videoButton.className = where === 'hidden' ? 'vid' : 'vid on'
-    videoButton.title = where === 'stage' && narrowNow() ? t('소리만 듣기') : nextTitle[where]
+    videoButton.title = where === 'hidden' ? t('화면 보기') : t('소리만 듣기')
     prevButton.disabled = engine.state.queue.length === 0
     nextButton.disabled = engine.state.queue.length === 0
     loadRating()
@@ -1309,7 +1310,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    */
   function pictureNow(): VideoLayout {
     if (!engine.current) return 'hidden'
-    if (engine.state.mode === 'video') return !narrowNow() && engine.state.videoPref === 'watch' ? 'watch' : 'stage'
+    if (engine.state.mode === 'video') return 'stage'
     // Music: nothing at all. The corner window a desktop used to get here was
     // a window over the list being read, with YouTube's controls on it, and
     // was taken for a stray PiP (2026-09-06). Leaving the stage up with the
