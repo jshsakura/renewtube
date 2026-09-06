@@ -453,24 +453,27 @@ export class Engine {
    * NETWORK_LOADING, not NETWORK_EMPTY).
    */
   private rescueDormant(): void {
-    // On a phone too, now. It was desktop-only to spare the phone a navigation
-    // that lands paused (an arrival cannot autostart under WebKit) — but a
-    // signed-in home/playlist player is dormant on the phone the same way it is
-    // on the desktop, and there the picture sat black holding a track that no
-    // press would start (2026-09-07, m.youtube.com, "재생기가 뭔가 물고있고
-    // 재생시 재생안됨"). A watch page gives a live player the press does reach,
-    // one tap away, which beats a dead stage. It still only fires on a player
-    // that is genuinely empty, so a phone where playing in place works (every
-    // signed-out case, and the WebKit test) never navigates.
+    // The last resort: when we asked to play and, past the grace period, no
+    // sound is coming out, hand the track to the watch page where YouTube
+    // builds a live player. It fires whether the in-page player is empty or
+    // holding something it will not start — the owner's "재생기엔 뭐가
+    // 물려있고 그럼 소리나고 가던지". Runs on the phone too now; there the
+    // arrival lands paused, but its play button works, unlike the stuck one.
+    //
+    // The gate is `tryStart` having failed: this only looks while wantsPlaying
+    // is set (cleared the instant sound is actually out), past DORMANT_MS a
+    // healthy load clears well inside, off the watch page, and never during an
+    // advert. A buffering element is not paused, so a slow load is left to
+    // finish rather than reloaded.
     if (this.loadedId === undefined || this.loadSeq === this.navigatedForSeq) return
     if (Date.now() - this.loadAskedAt < DORMANT_MS) return
     if (/^\/watch/.test(location.pathname)) return
-    const p = this.player
-    if (!p) return
-    if (p.getVideoData()?.video_id) return
+    if (this.adShowing()) return
     const el = this.videoEl()
-    const empty = !el || (el.networkState === 0 && !el.currentSrc && !el.src && el.readyState === 0)
-    if (!empty) return
+    // Making sound, or buffering toward it? Leave it. Only a genuinely paused
+    // (or missing) element — nothing loaded, a preview YouTube paused, or our
+    // track the player took but never started — gets the watch page.
+    if (el && !el.paused && !el.ended) return
     this.navigatedForSeq = this.loadSeq
     setQuickOn(true)
     markArrival(this.loadedId)
