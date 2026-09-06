@@ -88,7 +88,10 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   visibility: visible !important;
   position: fixed !important;
   left: var(--oc-x, 0px) !important;
-  top: var(--oc-y, 0px) !important;
+  /* --oc-y is the slot's base top (apply adds back the scroll offset); the
+     picture then rides the list's scroll through the same --stage-scroll the
+     slot uses, so the two move as one with no JS tracking to lag. */
+  top: calc(var(--oc-y, 0px) - var(--stage-scroll, 0px)) !important;
   width: var(--oc-w, 320px) !important;
   height: var(--oc-h, 180px) !important;
   z-index: var(--oc-z, 2147482100) !important;
@@ -136,7 +139,10 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   visibility: visible !important;
   position: fixed !important;
   left: var(--oc-x, 0px) !important;
-  top: var(--oc-y, 0px) !important;
+  /* --oc-y is the slot's base top (apply adds back the scroll offset); the
+     picture then rides the list's scroll through the same --stage-scroll the
+     slot uses, so the two move as one with no JS tracking to lag. */
+  top: calc(var(--oc-y, 0px) - var(--stage-scroll, 0px)) !important;
   width: var(--oc-w, 320px) !important;
   height: var(--oc-h, 180px) !important;
   /* One above the picture, and it travels with it: cover() lowers --oc-z when
@@ -635,12 +641,30 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
     if (!covered) lift()
     const want = target.getBoundingClientRect()
     if (want.width < 2 || want.height < 2) return
+    // The slot's top already carries the list's scroll (via --stage-scroll on a
+    // desktop stage/watch), and the picture carries it too in its own CSS. So
+    // --oc-y is stored as the *base* top with the scroll added back, leaving it
+    // constant while scrolling; the movement is pure CSS and cannot lag.
+    // The scroll offset lives on the document root (set by the app); read the
+    // computed value, since `vars` is our own stylesheet rule, not the root.
+    const stageScroll = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stage-scroll')) || 0
     vars.setProperty('--oc-x', `${Math.round(want.left)}px`)
-    vars.setProperty('--oc-y', `${Math.round(want.top)}px`)
+    vars.setProperty('--oc-y', `${Math.round(want.top + stageScroll)}px`)
     vars.setProperty('--oc-w', `${Math.round(want.width)}px`)
     vars.setProperty('--oc-h', `${Math.round(want.height)}px`)
     const player = document.getElementById('movie_player')
     if (!player) return
+    // A desktop stage/watch slot scrolls with the list, and the sub-pixel
+    // dx/dy correction below oscillates against a scroll it can only see a
+    // frame late — it re-pushed the picture back to the top on every scroll
+    // (measured 2026-09-06 in the watch layout). There the slot's own
+    // coordinates are exact, so track them straight and hold the transform at
+    // zero. The correction stays for the mobile in-sheet picture it was for.
+    if (target.classList.contains('stage') || target.classList.contains('watch')) {
+      if (vars.getPropertyValue('--oc-dx') !== '0px') vars.setProperty('--oc-dx', '0px')
+      if (vars.getPropertyValue('--oc-dy') !== '0px') vars.setProperty('--oc-dy', '0px')
+      return
+    }
     const got = player.getBoundingClientRect()
     const dx = Number.parseFloat(vars.getPropertyValue('--oc-dx') || '0')
     const dy = Number.parseFloat(vars.getPropertyValue('--oc-dy') || '0')

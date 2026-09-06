@@ -495,6 +495,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     app.classList.toggle('has-watch', layout === 'watch')
     app.classList.toggle('has-corner', layout === 'corner')
     if (layout === 'watch') drawUpnext()
+    // A new stage starts un-scrolled; the list's own scrollTop resets with the view.
+    document.documentElement.style.setProperty('--stage-scroll', '0px')
     seatSlot()
     drawBar()
   }
@@ -1311,6 +1313,22 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // switch off was the earlier bug, so pressing it still changes something.
     return 'hidden'
   }
+
+  // The stage scrolls with the list on a desktop: as the browse list scrolls
+  // up, the picture (and the watch column) ride up with it and out of the way,
+  // rather than staying pinned to the top — the owner's main ask
+  // ("재생위치 고정이 제일 문제야 스크롤이 가능해야한다구야"). The slot moves by
+  // CSS (--stage-scroll) and the player follows it through the shell's scroll
+  // tracking. A phone is left alone; its stage was fine pinned. Clamped to the
+  // slot's own height so it parks off the top and the list then has the screen.
+  function onMainScroll(): void {
+    if (app.classList.contains('narrow')) return
+    if (!app.classList.contains('has-stage') && !app.classList.contains('has-watch')) return
+    const stageH = slot.getBoundingClientRect().height
+    const y = stageH > 0 ? Math.min(main.scrollTop, stageH) : 0
+    document.documentElement.style.setProperty('--stage-scroll', `${y}px`)
+  }
+  main.addEventListener('scroll', onMainScroll, { passive: true })
 
   let showing = engine.current?.videoId
   const offChange = engine.subscribe(() => {

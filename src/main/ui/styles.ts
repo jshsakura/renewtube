@@ -781,7 +781,7 @@ input { font: inherit; color: inherit; }
    900px window more than half the content panel was video and the list got a
    sliver. A player that shows one and a half rows is not showing a list. */
 .slot.stage {
-  left: calc(var(--side) + var(--gap) * 2); top: var(--gap);
+  left: calc(var(--side) + var(--gap) * 2); top: calc(var(--gap) - var(--stage-scroll, 0px));
   width: calc(100dvw - var(--side) - var(--gap) * 3); height: var(--stage-h);
 }
 .app.has-stage .main { padding-top: calc(var(--stage-h) + 20px); }
@@ -792,14 +792,14 @@ input { font: inherit; color: inherit; }
    below both. Desktop only — a phone folds this back to the cinema stage. */
 .app.has-watch { --stage-h: min(calc((100vw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap)) * 0.5625), 86vh); }
 .slot.watch {
-  left: calc(var(--side) + var(--gap) * 2); top: var(--gap);
+  left: calc(var(--side) + var(--gap) * 2); top: calc(var(--gap) - var(--stage-scroll, 0px));
   width: calc(100dvw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap));
   height: var(--stage-h);
 }
 .app.has-watch .main { padding-top: calc(var(--stage-h) + 20px); }
 .upnext { display: none; }
 .app.has-watch .upnext {
-  position: fixed; top: var(--gap); height: var(--stage-h);
+  position: fixed; top: calc(var(--gap) - var(--stage-scroll, 0px)); height: var(--stage-h);
   left: calc(100dvw - var(--upnext-w) - var(--gap)); width: var(--upnext-w);
   display: flex; flex-direction: column; z-index: 5;
   background: var(--card); border: 1px solid var(--glass-line);
