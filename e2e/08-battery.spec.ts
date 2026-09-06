@@ -111,8 +111,15 @@ test('video mode asks for the picture back, and music mode takes it away again',
 
     // Restoring takes two calls in one order, and either alone fails quietly:
     // the ceiling by itself never leaves 144p, and `auto` by itself crawls to
-    // 360p and stops. The player naming hd1080 is what says both landed.
-    await expect.poll(() => quality(h.page), { timeout: 60_000 }).toBe('hd1080')
+    // 360p and stops. On a desktop the ceiling is the video's own best rather
+    // than a phone's 1080p battery cap (engine.videoCeiling), so what says both
+    // landed is the player reaching the highest level the video offers — 2160p
+    // on this one. The test browser is a desktop-sized viewport.
+    const best = await h.page.evaluate(() => {
+      const p = document.getElementById('movie_player') as { getAvailableQualityLevels?: () => string[] } | null
+      return (p?.getAvailableQualityLevels?.() ?? []).filter((l) => l !== 'auto')[0] ?? 'hd1080'
+    })
+    await expect.poll(() => quality(h.page), { timeout: 60_000 }).toBe(best)
 
     for (let i = 0; i < 3 && (await modeNow(h.page)) !== 'music'; i++) {
       await picture.click()
