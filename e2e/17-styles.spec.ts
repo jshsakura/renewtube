@@ -39,27 +39,28 @@ test('a view animation can never leave the pane invisible', () => {
   }
 })
 
-test('the scrolling panes carry no backdrop filter', () => {
-  // A large scrolling element with a backdrop-filter is its own compositing
-  // layer whose backdrop is re-rendered as things move behind it, and on iOS
-  // WebKit that layer can come back from a compositing change with nothing
-  // painted in it while still taking every press. This product moves YouTube's
-  // player in and out of a stage, which is that change over and over, and the
-  // owner's screen went black on exactly those presses while every element in
-  // it stayed pressable (2026-09-07, "안 보이지만 눌린다").
+test('nothing in the stylesheet blurs what is behind it', () => {
+  // One rule with no exceptions, because the exceptions were the bug.
   //
-  // Nothing was lost by taking it off: what is behind these two is our own flat
-  // ground, and a blur of one colour is that colour. Menus and dialogs keep
-  // theirs — they sit over content, where the blur is the point.
-  for (const pane of ['.main', '.side']) {
-    const rule = new RegExp(`\\n\\${pane} \\{([^}]*)\\}`).exec(STYLES)
-    expect(rule, `${pane} still has a rule`).not.toBeNull()
-    expect(rule![1], `${pane} must not carry a backdrop filter`).not.toMatch(/backdrop-filter/)
-  }
-  // And the shell's own surfaces are flat: no blur to ask for, and nothing
-  // translucent that would need one to look like anything.
-  expect(STYLES, 'the pane blur is off in both palettes').not.toMatch(/--pane-blur:\s*(?!none)\S/)
-  for (const decl of [...STYLES.matchAll(/--pane:\s*([^;]+);/g)]) {
-    expect(decl[1], 'a shell surface is opaque').not.toMatch(/rgba|hsla|\/\s*[\d.]+\s*\)/)
+  // A backdrop-filter makes its element a compositing layer whose backdrop is
+  // re-rendered as things move behind it, and on iOS WebKit that layer can come
+  // back with nothing painted in it while every element inside still takes a
+  // press. This product moves YouTube's player in and out of a stage, which is
+  // that change over and over. The owner's screen: the header perfect and the
+  // pane black, the drawer painted for 250 pixels and black below, buttons
+  // still working when pressed blind ("안 보이지만 눌린다", 2026-09-07).
+  //
+  // And it showed nothing. Every surface here stands on our own flat ground, so
+  // each blur was one colour seen through the same colour. The first fix took
+  // it off the two scrolling panes and left it on the drawer, which is the
+  // phone's own rule and the one in the photograph — so now there are no
+  // exceptions to keep track of.
+  const code = STYLES.replace(/\/\*[\s\S]*?\*\//g, '')
+  expect(code, 'no element may blur its backdrop').not.toMatch(/backdrop-filter\s*:/)
+  expect(code, 'and no blur is left to ask for').not.toMatch(/--(pane|pop)-blur:\s*(?!none)\S/)
+  // The shell's own surfaces are opaque as well: a colour against the same
+  // colour is not translucency, it is a layer for nothing.
+  for (const decl of [...code.matchAll(/--(?:pane|pop-solid):\s*([^;]+);/g)]) {
+    expect(decl[1], 'a full-screen surface is opaque').not.toMatch(/rgba|hsla/)
   }
 })

@@ -116,7 +116,6 @@ export const STYLES = `
      hairline that tells an edge from a shadow. */
   --pop: rgba(30, 27, 23, .58);
   --pop-line: rgba(236, 231, 223, .16);
-  --pop-blur: saturate(180%) blur(28px);
   /* The panes themselves, one step less glassy than a popover: these carry the
      reading, and text on a heavy blur is text you squint at. Over the ground
      they mostly read as depth; over content — the drawer on a phone, the
@@ -130,6 +129,15 @@ export const STYLES = `
      (2026-09-07). Flat paint cannot do that. */
   --pane: #1b1815;
   --pane-blur: none;
+  /* What a popover surface is when it has to fill the screen: the same colour
+     with nothing to see through to. */
+  --pop-solid: #201d19;
+  /* Nothing in this stylesheet blurs what is behind it. Every surface here
+     stands on our own flat ground, so a blur showed one colour through one
+     colour — and each one cost a compositing layer that iOS WebKit can hand
+     back unpainted, which is a screen that is all there, takes every press,
+     and cannot be seen (2026-09-07). One rule, no exceptions to remember. */
+  --pop-blur: none;
 
   --hover: rgba(236, 231, 223, .06);
   --shadow: 0 2px 6px rgba(20, 12, 4, .28);
@@ -203,9 +211,10 @@ export const STYLES = `
   --glass-line: #ddd8cd;
   --pop: rgba(251, 250, 246, .62);
   --pop-line: rgba(35, 32, 25, .14);
-  --pop-blur: saturate(180%) blur(28px);
   --pane: #fbfaf6;
   --pane-blur: none;
+  --pop-solid: #ffffff;
+  --pop-blur: none;
   --hover: rgba(0, 0, 0, .05);
   --shadow: 0 2px 6px rgba(70, 60, 40, .1);
 }
@@ -1107,7 +1116,6 @@ input[type=range]::-moz-range-thumb {
   position: fixed; z-index: 2147483100; padding: 4px;
   min-width: 224px; max-width: min(320px, calc(100dvw - 16px));
   background: var(--pop); color: var(--popover-foreground);
-  -webkit-backdrop-filter: var(--pop-blur); backdrop-filter: var(--pop-blur);
   border: 1px solid var(--pop-line); border-radius: var(--radius-md); box-shadow: var(--shadow);
 }
 .menu button {
@@ -1147,7 +1155,6 @@ input[type=range]::-moz-range-thumb {
 .modal {
   width: min(420px, calc(100dvw - 32px)); max-height: 72dvh; display: flex; flex-direction: column;
   background: var(--pop); color: var(--popover-foreground);
-  -webkit-backdrop-filter: var(--pop-blur); backdrop-filter: var(--pop-blur);
   border: 1px solid var(--pop-line); border-radius: var(--radius-lg); box-shadow: var(--shadow);
 }
 /* The phone form: a sheet at the foot of the screen, which is what every menu
@@ -1214,7 +1221,6 @@ input[type=range]::-moz-range-thumb {
   max-width: min(560px, calc(100dvw - 32px));
   padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px;
   background: var(--pop); color: var(--popover-foreground);
-  -webkit-backdrop-filter: var(--pop-blur); backdrop-filter: var(--pop-blur);
   border: 1px solid var(--pop-line); box-shadow: var(--shadow);
 }
 .toast > svg { flex: none; color: var(--primary); }
@@ -1325,8 +1331,10 @@ input[type=range]::-moz-range-thumb {
      out at once; this makes the losing case visible rather than clipped. */
   position: fixed; left: -302px; top: 0; height: 100dvh; width: 302px; z-index: 40;
   overflow: hidden;
-  background: var(--pop);
-  -webkit-backdrop-filter: var(--pop-blur); backdrop-filter: var(--pop-blur);
+  /* Flat, like every other surface of ours that fills the screen. This one is
+     the drawer, and it is the one the owner photographed painted for its first
+     250 pixels and black for the rest. */
+  background: var(--pop-solid);
   border: 0; border-right: 1px solid var(--pop-line); border-radius: 0;
   transition: left .22s ease;
   padding: calc(6px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
@@ -1447,8 +1455,8 @@ input[type=range]::-moz-range-thumb {
   position: fixed; left: 0; top: 0; width: 100dvw; height: 100dvh; z-index: 30;
   flex-direction: column; align-items: stretch; gap: 0;
   padding: calc(6px + env(safe-area-inset-top)) 20px calc(22px + env(safe-area-inset-bottom));
-  background: var(--pop);
-  -webkit-backdrop-filter: var(--pop-blur); backdrop-filter: var(--pop-blur);
+  /* The opened player is the whole screen too. Flat, for the same reason. */
+  background: var(--pop-solid);
   border-top: 0;
 }
 /* The picture sits in the opened player where the artwork is, at the width
