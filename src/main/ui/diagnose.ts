@@ -68,7 +68,11 @@ function onTop(): string[] {
       // Ours is not a reason to say nothing: a scrim, a sheet or a splash of
       // ours left over covers the screen exactly as thoroughly as YouTube's.
       const mine = OURS.has(el.tagName) ? '' : ' ←'
-      out.push(`  ${x},${y}: ${name(el)}${mine}`)
+      const cs = getComputedStyle(el)
+      // Hit-testable is not the same as visible, and that difference is the
+      // whole of a screen that measures perfectly and looks black.
+      const faint = cs.opacity !== '1' || cs.visibility !== 'visible' ? ` op ${cs.opacity} vis ${cs.visibility}` : ''
+      out.push(`  ${x},${y}: ${name(el)}${mine}${faint}`)
     }
   }
   return out.length > 0 ? out : ['  아무것도 없음']
@@ -201,6 +205,25 @@ export function diagnose(engine: Engine, version: string): string {
   lines.push('')
   lines.push('앱의 자리')
   lines.push(`  앱 ${rect(appEl)} · 목록 ${rect(mainEl)} (자식 ${mainEl ? mainEl.children.length : 0}개) · 바 ${rect(barEl)}`)
+  // The gap at the top of the list, and what would make one.
+  //
+  // The list reserves room for the picture by padding its own top, and it
+  // scrolls inside itself. Either of those left where it does not belong is a
+  // band of empty ground above the content — invisible while the picture is
+  // over it, and the whole screen the moment the picture is put away. Nothing
+  // else in this report would show it.
+  if (mainEl) {
+    const m = getComputedStyle(mainEl)
+    const first = mainEl.firstElementChild
+    lines.push(
+      `  목록 안: 위여백 ${m.paddingTop} · 스크롤 ${Math.round(mainEl.scrollTop)}/${mainEl.scrollHeight} · 첫 자식 ${first ? `${name(first)} ${rect(first)}` : '없음'}`,
+    )
+  }
+  if (appEl) lines.push(`  앱 클래스: ${appEl.className}`)
+  if (shadow) {
+    const sl = shadow.querySelector('.slot')
+    lines.push(`  슬롯: ${sl ? `${sl.className} ${rect(sl)} · ${getComputedStyle(sl).display}` : '없음'} · --stage-h ${getComputedStyle(appEl ?? document.documentElement).getPropertyValue('--stage-h').trim() || '없음'} · --stage-scroll ${getComputedStyle(document.documentElement).getPropertyValue('--stage-scroll').trim() || '없음'}`)
+  }
   lines.push(
     `  보이는 영역 ${window.innerWidth}x${window.innerHeight} · visual ${vv ? `${Math.round(vv.width)}x${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : '없음'} · client ${document.documentElement.clientWidth}x${document.documentElement.clientHeight} · 화면 ${window.screen.width}x${window.screen.height}`,
   )
@@ -210,6 +233,41 @@ export function diagnose(engine: Engine, version: string): string {
     if (b.width < 1 || b.height < 1) lines.push('  ⚠ 바가 그려지지 않았습니다')
   }
   if (mainEl && mainEl.children.length === 0) lines.push('  ⚠ 목록이 비어 있습니다')
+  // What the list is actually showing.
+  //
+  // Two reports of the same screen, one broken and one not, had identical
+  // geometry, nothing covering, and our own elements under every probe — and
+  // still one of them was black to look at. Elements can be laid out, sized and
+  // hit-testable while painting nothing at all: empty text, a picture that
+  // never arrived, a colour that matches the ground. So the rows are asked what
+  // they are carrying rather than only where they are.
+  // The palette, in case the answer is that the ink and the paper became the
+  // same colour. A screen that measures perfectly and looks black is either
+  // painting nothing or painting it in the background's own colour, and this
+  // is the half of that question the boxes above cannot answer.
+  if (appEl && mainEl) {
+    const a = getComputedStyle(appEl)
+    const m = getComputedStyle(mainEl)
+    lines.push('')
+    lines.push('색')
+    lines.push(`  앱 ${a.backgroundColor} / 글자 ${a.color} · 목록 ${m.backgroundColor} · 테마 ${appEl.classList.contains('light') ? 'light' : 'dark'}`)
+    lines.push(`  ground ${a.getPropertyValue('--ground').trim() || '없음'} · foreground ${a.getPropertyValue('--foreground').trim() || '없음'} · panel ${a.getPropertyValue('--panel').trim() || '없음'}`)
+  }
+  lines.push('')
+  lines.push('목록이 그리고 있는 것')
+  const rowsSeen = shadow ? Array.from(shadow.querySelectorAll('.row, .tile, .card, .shelf')).slice(0, 4) : []
+  if (rowsSeen.length === 0) {
+    lines.push(`  줄이 없습니다 (목록 자식 ${mainEl ? mainEl.children.length : 0}개)`)
+  }
+  for (const el of rowsSeen) {
+    const cs = getComputedStyle(el)
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const img = el.querySelector('img')
+    const src = img?.getAttribute('src') ?? ''
+    lines.push(
+      `  ${name(el)} ${rect(el)} · 글자 ${text.length}자 "${text.slice(0, 24)}" · 그림 ${img ? (src ? `${img.naturalWidth}x${img.naturalHeight}` : '주소없음') : '없음'} · op ${cs.opacity} vis ${cs.visibility} 색 ${cs.color}`,
+    )
+  }
   lines.push('')
   lines.push('덮고 있는 것:')
   lines.push(...covers(engine))
