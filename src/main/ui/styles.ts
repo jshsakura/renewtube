@@ -1703,7 +1703,7 @@ input[type=range]::-moz-range-thumb {
 }
 .main .rows .row.now .thumb { width: 60px; height: 60px; border-radius: var(--radius-md); box-shadow: var(--shadow); }
 .main .rows .row.now .rowInner { grid-template-columns: 24px 60px 1fr auto; }
-.main .rows .row.now .title { font-size: 15px; font-weight: 600; white-space: normal; overflow: visible; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.main .rows .row.now .title { font-size: 15px; font-weight: 600; white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .main .rows .row.now .by { font-size: 13px; }
 /* The card's four-column template must not reach the phone. Under 860px the
    row is two columns, artwork and text, and the number cell is lifted out of
