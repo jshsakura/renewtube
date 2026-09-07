@@ -8,6 +8,7 @@
 import { expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { assertFresh } from '../fresh.ts'
 
 const BUNDLE = resolve(import.meta.dirname, '../../dist-lab/lab.js')
 
@@ -59,6 +60,9 @@ const HTML = `<!doctype html><meta charset="utf-8"><title>lab</title>
  * whole recovery happens for real rather than being asserted a step at a time.
  */
 export async function lab(page: Page, config: LabConfig = {}, path = '/'): Promise<void> {
+  // The laboratory bundles the engine itself, so a stale bundle here means the
+  // whole fault matrix is answering about the engine as it was.
+  assertFresh(BUNDLE, [resolve(import.meta.dirname, '../../src'), resolve(import.meta.dirname, 'entry.ts')], 'node scripts/build-lab.mjs')
   await page.route('https://www.youtube.com/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/__lab.js') {

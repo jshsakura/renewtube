@@ -21,8 +21,13 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { BrowserContext, Page } from '@playwright/test'
+import { assertFresh } from '../fresh.ts'
 
-const MAIN = readFileSync(resolve(import.meta.dirname, '../../dist/main.js'), 'utf8')
+const BUNDLE = resolve(import.meta.dirname, '../../dist/main.js')
+// Before reading it, not after: a stale bundle here is a whole suite passing
+// about code nobody is running.
+assertFresh(BUNDLE, [resolve(import.meta.dirname, '../../src')], 'npm run build')
+const MAIN = readFileSync(BUNDLE, 'utf8')
 
 export async function inject(context: BrowserContext, page: Page): Promise<void> {
   await page.addInitScript(() => {

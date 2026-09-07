@@ -7,6 +7,7 @@ import { chromium, expect, type BrowserContext, type Page } from '@playwright/te
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { assertFresh } from './fresh.ts'
 
 // Normally the local build. `DIST_DIR` points it somewhere else — at a package
 // unzipped from the live page, say, which is the only way to prove that what
@@ -40,6 +41,11 @@ export interface Harness {
 
 /** Opens `url` with the mode already switched on, unless `on` is false. */
 export async function open(url: string, on = true): Promise<Harness> {
+  // Not when DIST_DIR points somewhere else: that is a package downloaded from
+  // the live page, and it is *meant* to be older than the working tree.
+  if (process.env.DIST_DIR === undefined) {
+    assertFresh(join(DIST, 'main.js'), [resolve(import.meta.dirname, '../src'), resolve(import.meta.dirname, '../public')], 'npm run build')
+  }
   const profile = mkdtempSync(join(tmpdir(), 'oc-easy-mode-'))
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
@@ -69,8 +75,21 @@ export async function open(url: string, on = true): Promise<Harness> {
     })
   }
   // Live YouTube over a home line: generous, because a slow first byte is not
-  // a failing product.
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  // a failing product. And tried again, because one bad minute of somebody
+  // else's network is not a failing product either — a run that goes red for
+  // that teaches the reader to ignore red, which costs more than the minute.
+  let last: unknown
+  for (let go = 0; go < 3; go++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      last = undefined
+      break
+    } catch (e) {
+      last = e
+      await page.waitForTimeout(1500)
+    }
+  }
+  if (last) throw last
   return {
     context,
     page,

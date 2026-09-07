@@ -14,19 +14,39 @@ test('mounts on the mobile site, and nothing of YouTube paints over it', async (
   await page.waitForTimeout(2500)
   expect(errors).toEqual([])
   const onTop = await page.evaluate(() => {
+    // The picture is allowed on top only where we put it — see the same rule
+    // in e2e/00-safety. Waving the player through wherever it lands is how a
+    // parked picture painted across the list without a single test noticing.
+    const slot = (document.querySelector('oc-easy-mode') as HTMLElement | null)?.shadowRoot?.querySelector('.slot')
+    const showing = slot instanceof HTMLElement && !slot.classList.contains('hidden')
+    const box = showing ? (slot as HTMLElement).getBoundingClientRect() : null
     const bad: string[] = []
     for (let i = 0; i < 8; i++)
       for (let j = 0; j < 12; j++) {
-        const el = document.elementFromPoint(Math.round(((i + 0.5) / 8) * innerWidth), Math.round(((j + 0.5) / 12) * innerHeight))
+        const x = Math.round(((i + 0.5) / 8) * innerWidth)
+        const y = Math.round(((j + 0.5) / 12) * innerHeight)
+        const el = document.elementFromPoint(x, y)
         if (!el) continue
         const tag = el.tagName.toLowerCase()
         if (tag === 'oc-easy-mode' || tag === 'oc-easy-mode-overlay' || tag === 'html' || tag === 'body') continue
-        if (el.closest('#movie_player, #player-control-container, bottom-sheet-container')) continue
+        if (el.closest('#movie_player, #player-control-container, bottom-sheet-container')) {
+          const inSlot = box !== null && x >= box.left - 2 && x <= box.right + 2 && y >= box.top - 2 && y <= box.bottom + 2
+          if (inSlot) continue
+        }
         if (bad.length < 6) bad.push(`${tag}#${el.id}`)
       }
     return bad
   })
   expect(onTop).toEqual([])
+  // And the screen it drew can be seen. A pane at opacity nothing reads to
+  // the person holding the phone exactly like a pane that was never drawn.
+  const pane = await page.evaluate(() => {
+    const main = (document.querySelector('oc-easy-mode') as HTMLElement).shadowRoot!.querySelector('.main')!
+    const kids = Array.from(main.children)
+    return { children: kids.length, faintest: kids.length === 0 ? 1 : Math.min(...kids.map((c) => Number(getComputedStyle(c).opacity))) }
+  })
+  expect(pane.children).toBeGreaterThan(0)
+  expect(pane.faintest).toBeGreaterThan(0.3)
 })
 
 test('a track pressed on home plays here, and 영상 mode shows a picture', async ({ context, page }) => {

@@ -23,7 +23,7 @@ test('does nothing at all while switched off', async () => {
 test('mounts exactly two nodes and touches nothing else', async () => {
   const h = await open('https://www.youtube.com/')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     const counts = await h.page.evaluate(() => ({
       style: document.querySelectorAll('#oc-easy-mode').length,
       host: document.querySelectorAll('oc-easy-mode').length,
@@ -48,7 +48,7 @@ test('mounts exactly two nodes and touches nothing else', async () => {
 test('nothing of YouTube shows through, even with its guide drawer open', async () => {
   const h = await open('https://www.youtube.com/')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     // Polymer's drawer declares visibility: visible on its own content when
     // opened, which inherited hidden cannot beat. Opened here the way the
     // page would open it, then counted: every YouTube element with a box on
@@ -93,12 +93,28 @@ test('nothing of YouTube shows through, even with its guide drawer open', async 
  */
 async function nothingOnTopBut(page: import('@playwright/test').Page): Promise<string[]> {
   return page.evaluate(() => {
-    const ok = (el: Element | null): boolean => {
+    // The picture is allowed on top only where we put it.
+    //
+    // This used to wave the player through wherever it landed, on the grounds
+    // that the picture is drawn above the app on purpose. That is true of the
+    // picture in its slot and of nothing else — and it is exactly why a parked
+    // player painting across the list went unnoticed until a phone showed it
+    // (2026-09-07). With the slot hidden the player has no business anywhere on
+    // the screen, and with it up, only inside it.
+    const slot = (document.querySelector('oc-easy-mode') as HTMLElement | null)?.shadowRoot?.querySelector('.slot')
+    const showing = slot instanceof HTMLElement && !slot.classList.contains('hidden')
+    const box = showing ? (slot as HTMLElement).getBoundingClientRect() : null
+    const inSlot = (x: number, y: number): boolean =>
+      box !== null && x >= box.left - 2 && x <= box.right + 2 && y >= box.top - 2 && y <= box.bottom + 2
+    const ok = (el: Element | null, x: number, y: number): boolean => {
       if (!el) return true // outside the document: nothing painted there
       const tag = el.tagName.toLowerCase()
       if (tag === 'oc-easy-mode' || tag === 'oc-easy-mode-overlay') return true
       if (tag === 'html' || tag === 'body') return true
-      if (el.closest('#movie_player, #player-control-container, bottom-sheet-container, #oc-abp-pip')) return true
+      // The player, its controls, the mobile sheet it opens and the sibling
+      // blocker's button that follows it: all of them belong to the picture,
+      // and the picture belongs in the slot.
+      if (el.closest('#movie_player, #player-control-container, bottom-sheet-container, #oc-abp-pip')) return inSlot(x, y)
       return false
     }
     const bad: string[] = []
@@ -107,10 +123,31 @@ async function nothingOnTopBut(page: import('@playwright/test').Page): Promise<s
       for (let j = 0; j < 10; j++) {
         const x = Math.round(((i + 0.5) / 16) * w), y = Math.round(((j + 0.5) / 10) * h)
         const el = document.elementFromPoint(x, y)
-        if (!ok(el) && bad.length < 8) bad.push(`${x},${y}: ${el!.tagName.toLowerCase()}#${el!.id}.${[...el!.classList].slice(0, 2).join('.')}`)
+        if (!ok(el, x, y) && bad.length < 8) bad.push(`${x},${y}: ${el!.tagName.toLowerCase()}#${el!.id}.${[...el!.classList].slice(0, 2).join('.')}`)
       }
     }
     return bad
+  })
+}
+
+/**
+ * The faintest thing the pane is drawing, and how much of it there is.
+ *
+ * A screen can be perfectly laid out and still not be there: the pane's
+ * children fade in as they land, and an entrance animation whose resting state
+ * is invisible leaves the list at nothing while the header and the bar above
+ * and below it stay perfect. That is a black rectangle where the content is,
+ * and it is what the phone reported (2026-09-07). Geometry cannot see it, so
+ * this asks what is actually painted.
+ */
+async function paneShows(page: import('@playwright/test').Page): Promise<{ children: number; faintest: number }> {
+  return page.evaluate(() => {
+    const main = (document.querySelector('oc-easy-mode') as HTMLElement).shadowRoot!.querySelector('.main')!
+    const kids = Array.from(main.children)
+    return {
+      children: kids.length,
+      faintest: kids.length === 0 ? 1 : Math.min(...kids.map((c) => Number(getComputedStyle(c).opacity))),
+    }
   })
 }
 
@@ -123,9 +160,14 @@ for (const [name, url] of [
   test(`nothing of YouTube paints on top of ours on ${name}, even with the guide open`, async () => {
     const h = await open(url)
     try {
-      await expect(app(h.page).locator('.app')).toBeVisible()
+      await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
       await h.page.waitForTimeout(2500)
       expect(await nothingOnTopBut(h.page)).toEqual([])
+      // And what it draws can be seen. A screen drawn at opacity nothing is
+      // the same to the reader as a screen not drawn at all.
+      const pane = await paneShows(h.page)
+      expect(pane.children, `${name}: the pane drew something`).toBeGreaterThan(0)
+      expect(pane.faintest, `${name}: and all of it is visible`).toBeGreaterThan(0.3)
       await h.page.evaluate(() => {
         const drawer = document.querySelector('tp-yt-app-drawer') as { opened?: boolean } | null
         if (drawer) drawer.opened = true
@@ -138,10 +180,53 @@ for (const [name, url] of [
   })
 }
 
+test('a page that puts its player on top still cannot show it while the picture is hidden', async () => {
+  // The owner's screen, made on purpose. Parking the picture used to mean
+  // "behind the app", which is a bet on our z-index outranking whatever
+  // YouTube's own stacking works out to — and one stacking context of theirs
+  // around the player wins that bet outright, whatever number we write on
+  // ours. Signed in, on a phone, one did: the parked picture painted across
+  // the list (2026-09-07).
+  //
+  // Asked of the geometry, not of the hit test. A parked player is
+  // click-through by design, and `elementFromPoint` cannot see a thing with
+  // pointer-events none — so the sweep in this file would call this screen
+  // clean however badly it was painted. Where the box *is* cannot be argued
+  // with, and off the screen is off the screen whatever the page ranks it.
+  const h = await open('https://www.youtube.com/')
+  try {
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
+    await h.page.waitForTimeout(2000)
+    const seen = await h.page.evaluate(() => {
+      const player = document.getElementById('movie_player')
+      if (!player) return null
+      // Whatever the page's own chain is, give the top of it everything it
+      // would need to beat us: its own stacking context, above ours. Not
+      // visibility — the page stays hidden, as our sheet leaves it, so the
+      // player is the one thing in that chain that can paint at all.
+      let top: HTMLElement = player
+      for (let el = player.parentElement; el && el !== document.body; el = el.parentElement) top = el
+      top.style.setProperty('position', 'fixed', 'important')
+      top.style.setProperty('z-index', '2147483000', 'important')
+      top.style.setProperty('transform', 'translateZ(0)', 'important')
+      const r = player.getBoundingClientRect()
+      return { right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width) }
+    })
+    expect(seen, 'there is a player to lift').not.toBeNull()
+    // Nothing of it on the screen, and still a box with a size: a picture
+    // squashed to nothing is one YouTube starts making decisions about.
+    expect(seen!.right).toBeLessThanOrEqual(0)
+    expect(seen!.width).toBeGreaterThan(100)
+    expect(await nothingOnTopBut(h.page)).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
 test('Escape twice puts YouTube back', async () => {
   const h = await open('https://www.youtube.com/')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     await h.page.keyboard.press('Escape')
     await h.page.keyboard.press('Escape')
     await expect(h.page.locator('oc-easy-mode')).toHaveCount(0)
@@ -159,7 +244,7 @@ test('leaving gives the picture its size back', async () => {
   // YouTube's own layout must own it again, video and all.
   const h = await open('https://www.youtube.com/watch?v=BzYnNdJhZQw')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     await h.page.keyboard.press('Escape')
     await h.page.keyboard.press('Escape')
     await expect(h.page.locator('oc-easy-mode')).toHaveCount(0)
@@ -183,12 +268,12 @@ test('leaving gives the picture its size back', async () => {
 test('a single Escape is left to YouTube', async () => {
   const h = await open('https://www.youtube.com/')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     await h.page.keyboard.press('Escape')
     await h.page.waitForTimeout(1500)
     await h.page.keyboard.press('Escape')
     await h.page.waitForTimeout(500)
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
   } finally {
     await h.close()
   }
@@ -197,7 +282,7 @@ test('a single Escape is left to YouTube', async () => {
 test('the sidebar button leaves too, and the flag stays off across a reload', async () => {
   const h = await open('https://www.youtube.com/')
   try {
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
     await app(h.page).locator('.exit').click()
     await expect(h.page.locator('oc-easy-mode')).toHaveCount(0)
     expect(await h.page.evaluate(() => localStorage.getItem('oc-easy-mode:on'))).toBe('0')
@@ -220,7 +305,7 @@ test('the toolbar switch turns it on and off through storage', async () => {
       }, musicMode)
 
     await flip(true)
-    await expect(app(h.page).locator('.app')).toBeVisible()
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
 
     await flip(false)
     await expect(h.page.locator('oc-easy-mode')).toHaveCount(0)
