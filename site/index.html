@@ -58,6 +58,7 @@
   --accent: #232019;
   --accent-hover: #3a352c;
   --accent-contrast: #fbfaf6;
+  --brand: #8b5cf6;
   --code-bg: #ece8df;
   --sk-bg: #e8e4db;
   --hover: rgba(0, 0, 0, 0.04);
@@ -77,6 +78,7 @@
   --accent: #ece7df;
   --accent-hover: #ffffff;
   --accent-contrast: #141210;
+  --brand: #8b5cf6;
   --code-bg: #1f1b17;
   --sk-bg: #221e1a;
   --hover: rgba(236, 231, 223, 0.06);
@@ -97,6 +99,7 @@
     --accent: #ece7df;
     --accent-hover: #ffffff;
     --accent-contrast: #141210;
+  --brand: #8b5cf6;
     --code-bg: #1f1b17;
     --sk-bg: #221e1a;
     --hover: rgba(236, 231, 223, 0.06);
@@ -117,6 +120,7 @@
   --accent: #232019;
   --accent-hover: #3a352c;
   --accent-contrast: #fbfaf6;
+  --brand: #8b5cf6;
   --code-bg: #ece8df;
   --sk-bg: #e8e4db;
   --hover: rgba(0, 0, 0, 0.04);
@@ -170,6 +174,8 @@ svg {
 .topbar-inner { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; }
 .topbar-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--text); font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .topbar-brand img { border-radius: 7px; display: block; }
+.topbar-name { font-weight: 700; }
+.topbar-re { color: var(--brand); }
 .topbar-controls { display: flex; align-items: center; gap: 8px; }
 .topbar-select {
   appearance: none; -webkit-appearance: none;
@@ -183,7 +189,7 @@ svg {
 /* A round pill for the theme, matching the language pill beside it. */
 .topbar-theme { flex: none; width: 34px; min-width: 34px; padding: 0; justify-content: center; }
 .topbar-theme svg { width: 16px; height: 16px; }
-@media (max-width: 560px) { .topbar-brand span { display: none; } }
+
 
 /* Korean breaks between words, not inside them. */
 :root[lang="ko"] body { word-break: keep-all; }
@@ -800,7 +806,7 @@ kbd {
   <div class="wrap topbar-inner">
     <a class="topbar-brand" href="./" aria-label="RenewTube">
       <img src="icon-128.png" width="28" height="28" alt="">
-      <span>RenewTube</span>
+      <span class="topbar-name"><span class="topbar-re">Renew</span>Tube</span>
     </a>
     <div class="topbar-controls">
     <select class="topbar-select" id="lang" aria-label="Language">
