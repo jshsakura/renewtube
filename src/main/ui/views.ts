@@ -143,7 +143,6 @@ function listOf(ctx: Ctx, first: api.Page, shape: Shape = feedShape(ctx), lead: 
   }
 
   draw()
-  relayoutOnModeChange(ctx, rows, draw)
   return rows
 }
 
@@ -255,16 +254,6 @@ function followNowPlaying(ctx: Ctx, into: HTMLElement): void {
  * left the document, so a screen that has been navigated away from stops
  * listening without anyone having to remember to say so.
  */
-function relayoutOnModeChange(ctx: Ctx, el: HTMLElement, draw: () => void): void {
-  let drawn = ctx.engine.state.mode
-  const off = ctx.engine.subscribe(() => {
-    if (!el.isConnected) return off()
-    if (ctx.engine.state.mode === drawn) return
-    drawn = ctx.engine.state.mode
-    draw()
-  })
-}
-
 /**
  * One card. The same component for a video and for a playlist, except for the
  * shape of the artwork: a playlist or an album is square, the way every music
@@ -1166,7 +1155,6 @@ async function playlist(ctx: Ctx, main: HTMLElement, id: string, title: string):
 
     if (tracks.length > 0) {
       draw()
-      relayoutOnModeChange(ctx, body, draw)
       // Only a list of one's own can be reordered, for the same reason only
       // one of them can have rows taken out.
       if (mine) {
