@@ -1345,7 +1345,14 @@ input[type=range]::-moz-range-thumb {
 /* ── The picture ────────────────────────────────────────────────────────── */
 .app.narrow .slot.corner { display: none; }
 .app.narrow.has-corner .main { padding-bottom: 24px; }
-.app.narrow .slot.stage { left: 0; width: 100dvw; top: var(--top-all); height: var(--stage-h); border-radius: 0; }
+/* The stage rides the list's scroll on a desktop. A phone never asked for
+   that — its scroll handler returns before it writes anything — but the
+   transform and the layer that carry it were still on the element, reading a
+   variable set on the document root that nothing here owns. Whatever that
+   variable last held, on whatever screen, moved the phone's picture and the
+   compositor layer under it. The stage is put back on the ground here: no
+   transform to inherit a stale number through, and no layer to keep. */
+.app.narrow .slot.stage { left: 0; width: 100dvw; top: var(--top-all); height: var(--stage-h); border-radius: 0; transform: none; will-change: auto; }
 .app.narrow.has-stage .main { padding-top: calc(var(--stage-h) + 16px); }
 
 /* ── The bar, closed ──────────────────────────────────────────────────────

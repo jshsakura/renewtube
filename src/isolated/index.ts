@@ -54,11 +54,42 @@ function send(config: Config): void {
   window.postMessage(msg, location.origin)
 }
 
+/**
+ * Whoever is waiting for the page's account of itself.
+ *
+ * One at a time is enough: the popup asks once per press, and a second press
+ * replaces the first. Cleared when the answer arrives or the wait runs out, so
+ * a page world that never answers cannot leave the popup waiting for ever.
+ */
+let waitingForDiagnosis: ((text: string) => void) | null = null
+
+// The popup cannot talk to the page's world; it talks to this one, which can.
+chrome.runtime.onMessage.addListener((msg: { type?: string }, _sender, respond) => {
+  if (msg?.type !== 'diagnose') return undefined
+  const timer = setTimeout(() => {
+    if (!waitingForDiagnosis) return
+    waitingForDiagnosis = null
+    respond({ text: '' })
+  }, 3000)
+  waitingForDiagnosis = (text: string) => {
+    clearTimeout(timer)
+    respond({ text })
+  }
+  const out: ToMain = { ns: NS, type: 'diagnose' }
+  window.postMessage(out, location.origin)
+  // The answer comes back on a later turn.
+  return true
+})
+
 window.addEventListener('message', (ev) => {
   if (ev.source !== window || !isOurs(ev.data)) return
   const msg = ev.data as ToIsolated
   if (msg.type === 'main-ready') {
     mainReported = true
+  } else if (msg.type === 'diagnosis') {
+    const waiting = waitingForDiagnosis
+    waitingForDiagnosis = null
+    waiting?.(msg.text)
   } else if (msg.type === 'get-config') {
     void readConfig().then(send)
   } else if (msg.type === 'set-config') {

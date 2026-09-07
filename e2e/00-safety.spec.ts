@@ -3,8 +3,21 @@
 
 import { expect, test } from '@playwright/test'
 import { app, open } from './fixture.ts'
+import { createHash } from 'node:crypto'
+import { resolve } from 'node:path'
 
 const WATCH = 'https://www.youtube.com/watch?v=BzYnNdJhZQw'
+
+/**
+ * What Chromium calls an unpacked extension: the path it was loaded from,
+ * hashed, with each nibble written as a letter from a to p. This extension has
+ * no background worker to ask, so the id is worked out rather than looked up.
+ */
+function extensionId(): string {
+  const dist = process.env.DIST_DIR ?? resolve(import.meta.dirname, '../dist')
+  const hash = createHash('sha256').update(dist).digest('hex').slice(0, 32)
+  return [...hash].map((c) => String.fromCharCode(97 + Number.parseInt(c, 16))).join('')
+}
 
 test('does nothing at all while switched off', async () => {
   const h = await open('https://www.youtube.com/', false)
@@ -323,6 +336,41 @@ test('signed out, a personal feed says so instead of looking empty', async () =>
     await expect(ui.locator('.app')).toBeVisible()
     await ui.locator('.nav', { hasText: '구독' }).click()
     await expect(ui.locator('.err')).toContainText('로그인')
+  } finally {
+    await h.close()
+  }
+})
+
+test('the toolbar popup can pull the diagnosis out of a page, whatever the page looks like', async () => {
+  // The report has to be reachable when the screen is the broken thing. The
+  // in-page one is not: it opens as a sheet over a page that will not paint,
+  // and it came up half-drawn on the owner's phone ("화면이 막혀있는데 설정창은
+  // 반절만 나오고"). The popup is the browser's own furniture, so it opens
+  // whatever the page is doing, and it asks the page world through the bridge.
+  const h = await open('https://www.youtube.com/')
+  try {
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
+    // The popup's own page, in a tab of its own, exactly as the toolbar opens
+    // it. An unpacked extension's id is Chromium's hash of the path it was
+    // loaded from, and this extension has no background worker to ask for it.
+    const id = extensionId()
+    const popup = await h.context.newPage()
+    await popup.goto(`chrome-extension://${id}/popup.html`)
+    await expect(popup.locator('#diag')).toBeVisible()
+    // The YouTube tab has to be the active one for the popup to find it, which
+    // is what happens when a toolbar button is pressed.
+    await h.page.bringToFront()
+    const text = await popup.evaluate(async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+      const tab = tabs.find((t) => /youtube\.com/.test(t.url ?? ''))
+      if (!tab?.id) return 'no tab'
+      const answer = (await chrome.tabs.sendMessage(tab.id, { type: 'diagnose' })) as { text?: string }
+      return answer?.text ?? ''
+    })
+    expect(text).toMatch(/^RenewTube \d+\.\d+\.\d+/)
+    expect(text).toContain('덮고 있는 것:')
+    expect(text).toContain('앱의 자리')
+    await popup.close()
   } finally {
     await h.close()
   }

@@ -15,7 +15,19 @@ export interface Config {
 
 export const DEFAULT_CONFIG: Config = { musicMode: false }
 
-export type ToMain = { ns: typeof NS; type: 'config'; config: Config }
+export type ToMain =
+  | { ns: typeof NS; type: 'config'; config: Config }
+  /**
+   * "Tell me what the screen looks like."
+   *
+   * Asked by the toolbar popup, through the isolated side. The in-page
+   * settings screen has the same report, and that is exactly the one that
+   * cannot be reached when the screen is the thing that is broken: the sheet
+   * came up half-drawn over a page that would not paint ("화면이 막혀있는데
+   * 설정창은 반절만 나오고", 2026-09-07). The popup is browser furniture and
+   * owes the page nothing, so it always opens.
+   */
+  | { ns: typeof NS; type: 'diagnose' }
 
 export type ToIsolated =
   | { ns: typeof NS; type: 'get-config' }
@@ -27,6 +39,8 @@ export type ToIsolated =
    * side injects the script itself.
    */
   | { ns: typeof NS; type: 'main-ready' }
+  /** The answer to `diagnose`, on its way back to the popup. */
+  | { ns: typeof NS; type: 'diagnosis'; text: string }
 
 export function isOurs(data: unknown): data is { ns: typeof NS; type: string } {
   return (

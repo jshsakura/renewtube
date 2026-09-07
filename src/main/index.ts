@@ -19,6 +19,8 @@ import { videoIdInUrl, waitForPlayer } from './player.ts'
 import { alreadyMounted, mount, type Shell } from './shell.ts'
 import { save, setQuickOn } from './store.ts'
 import { DEFAULT_CONFIG, NS, isOurs, type Config, type ToIsolated, type ToMain } from '../shared/messages.ts'
+import { diagnose } from './ui/diagnose.ts'
+import { version } from '../shared/version.ts'
 import { mountApp } from './ui/app.ts'
 import { explain, type Ctx } from './ui/ctx.ts'
 import { pick, toast } from './ui/overlay.ts'
@@ -82,6 +84,23 @@ function ask(msg: ToIsolated): void {
 window.addEventListener('message', (ev) => {
   if (ev.source !== window || !isOurs(ev.data)) return
   const msg = ev.data as ToMain
+  if (msg.type === 'diagnose') {
+    // The toolbar popup is asking. It asks because the screen may be the thing
+    // that is broken, and the in-page report cannot be reached through a
+    // half-drawn sheet — which is exactly the state this is wanted in. Answered
+    // even when nothing is running, because "nothing is running" is an answer.
+    let text: string
+    try {
+      text = running
+        ? diagnose(running.engine, version())
+        : `RenewTube ${version()} · ${new Date().toISOString()}\n${location.host}${location.pathname}\n모드가 꺼져 있거나 아직 뜨지 않았습니다.`
+    } catch (e) {
+      text = `RenewTube ${version()}\n진단을 만들지 못했습니다: ${String(e).slice(0, 200)}`
+    }
+    const out: ToIsolated = { ns: NS, type: 'diagnosis', text }
+    window.postMessage(out, location.origin)
+    return
+  }
   if (msg.type !== 'config') return
   const was = config.musicMode
   config = msg.config

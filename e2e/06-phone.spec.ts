@@ -343,6 +343,45 @@ test('a transform on the page cannot re-base the app or bring the picture back',
   }
 })
 
+test('a phone never carries the desktop stage scroll', async () => {
+  // The stage rides the list's scroll on a desktop, through a variable on the
+  // document root. A phone's scroll handler returns before it ever writes that
+  // variable — but the transform reading it was still on the phone's stage, and
+  // the root is one property for every screen the window has been. Whatever was
+  // left there, from a wider window or a turn of the phone, moved the picture on
+  // a screen with nothing to clear it. The owner put the day's trouble exactly
+  // here: "스크롤넣으면서 생겼고".
+  const { context, page } = await phone()
+  try {
+    await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    const ui = page.locator('oc-easy-mode')
+    await expect(ui.locator('.app.narrow')).toBeVisible({ timeout: 60_000 })
+    const first = ui.locator('.tile:not([aria-hidden]), .row:not([aria-hidden])').first()
+    await first.waitFor({ timeout: 60_000 })
+    await first.click()
+    await ui.locator('.bar .vid').click()
+    await expect(ui.locator('.slot')).toHaveClass(/stage/)
+    // Something left a scroll offset on the root, the way a wide window does.
+    await page.evaluate(() => document.documentElement.style.setProperty('--stage-scroll', '300px'))
+    await page.waitForTimeout(400)
+    const seen = await page.evaluate(() => {
+      const sr = (document.querySelector('oc-easy-mode') as HTMLElement).shadowRoot!
+      const slot = sr.querySelector('.slot') as HTMLElement
+      const top = sr.querySelector('.top') as HTMLElement
+      return {
+        transform: getComputedStyle(slot).transform,
+        slotTop: Math.round(slot.getBoundingClientRect().top),
+        headerBottom: Math.round(top.getBoundingClientRect().bottom),
+      }
+    })
+    expect(seen.transform, 'the phone stage is on the ground').toBe('none')
+    // And it is still under the header rather than pulled up over it.
+    expect(seen.slotTop).toBeGreaterThanOrEqual(seen.headerBottom - 1)
+  } finally {
+    await context.close()
+  }
+})
+
 test('the player bar opens into a full player and closes again', async () => {
   const { context, page } = await phone()
   try {

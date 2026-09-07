@@ -1362,6 +1362,11 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // which is when the height can actually change.
   let stageHeight = 0
   function measureStage(): void {
+    // A narrow screen does not scroll its stage, and must not be left carrying
+    // a number from when it was not narrow: the property lives on the document
+    // root, so a window dragged wide and back, or a phone turned on its side,
+    // could hand the picture an offset nothing on that screen would ever clear.
+    if (narrowNow()) document.documentElement.style.setProperty('--stage-scroll', '0px')
     stageHeight = app.classList.contains('has-stage') || app.classList.contains('has-watch') ? slot.getBoundingClientRect().height : 0
   }
   function onMainScroll(): void {

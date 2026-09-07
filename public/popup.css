@@ -60,3 +60,23 @@ html.on-phone .row { margin-top: 24px; font-size: 17px; }
 html.on-phone .switch { width: 52px; height: 30px; }
 html.on-phone .switch::after { width: 24px; height: 24px; }
 html.on-phone .switch[aria-checked='true']::after { transform: translateX(22px); }
+
+/* The diagnosis, which lives here because the one moment anybody wants it is
+   the moment the in-page screen cannot be read. A field rather than a block of
+   text: it can be selected, and on a phone a long press copies it. */
+.btn {
+  font: inherit; color: var(--foreground); background: var(--secondary);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+.btn:active { background: var(--hover, var(--border)); }
+.btn.wide { display: block; width: 100%; margin-top: 8px; text-align: center; }
+#report {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 12px;
+  height: 220px; resize: vertical; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--foreground); background: var(--background);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+  white-space: pre; overflow: auto;
+}
+[hidden] { display: none !important; }
+html.on-phone .btn { padding: 10px 16px; font-size: 16px; }
+html.on-phone #report { height: 300px; font-size: 12px; }
