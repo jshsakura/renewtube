@@ -442,6 +442,14 @@ input { font: inherit; color: inherit; }
 .sk { background: var(--muted); border-radius: var(--radius-md); animation: sk 1.2s ease-in-out infinite; }
 @keyframes sk { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; opacity: .6; } }
+/* A view is rebuilt whole on every render, so skeleton and content swap in one
+   step and it read as a hard pop. Each top-level piece of the pane now rises
+   in gently as it lands, which turns the skeleton→content change and every
+   navigation into a soft settle rather than a jump ("화면 갱신좀 자연스럽게").
+   Only the pane's own children, so the bar and the sidebar never move. */
+@keyframes viewEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.main > * { animation: viewEnter 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .main > * { animation: none; } }
 /* Light skeletons need a darker grey than --secondary: on warm paper the
    secondary is one breath from the panel and a static skeleton disappears. */
 .app.light .sk { background: var(--border); }
