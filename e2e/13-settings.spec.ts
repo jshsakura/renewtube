@@ -114,6 +114,11 @@ test('화면 진단 prints the screen in words, and the text is the report', asy
     // dead player can never carry.
     expect(text).toContain('복구:')
     expect(text).toContain('시계 멈춘 지')
+    // And the sixth: what is covering the screen, named. A report that says
+    // "전부 RenewTube" while something of ours sits over the list is the one
+    // answer this screen must never give ("뭐가 덮고있는겨", 2026-09-07).
+    expect(text).toContain('덮고 있는 것:')
+    expect(text).toContain('맨 위에 있는 것:')
   } finally {
     await h.close()
   }

@@ -33,19 +33,79 @@ function playerClasses(player: Element): string {
     .join(' ') || '(없음)'
 }
 
-/** What is on top at nine points of the viewport, when it is not ours. */
+/**
+ * The deepest thing painted at a point, through shadow roots.
+ *
+ * `elementFromPoint` stops at a shadow host, so asking the document alone
+ * answers "RenewTube" for everything of ours and never says *which* part —
+ * which is exactly the blind spot when the complaint is that something
+ * invisible is covering the screen. Each root is asked in turn until the
+ * answer stops changing.
+ */
+function deepestAt(x: number, y: number): Element | null {
+  let el = document.elementFromPoint(x, y)
+  for (let step = 0; step < 8; step++) {
+    const root = (el as HTMLElement | null)?.shadowRoot
+    if (!root) break
+    const inner = root.elementFromPoint(x, y)
+    if (!inner || inner === el) break
+    el = inner
+  }
+  return el
+}
+
+/** What is on top at nine points of the viewport, ours named as well as theirs. */
 function onTop(): string[] {
   const out: string[] = []
   const w = window.innerWidth
   const h = window.innerHeight
   for (const fy of [0.1, 0.5, 0.9]) {
     for (const fx of [0.1, 0.5, 0.9]) {
-      const el = document.elementFromPoint(Math.round(w * fx), Math.round(h * fy))
-      if (!el || OURS.has(el.tagName)) continue
-      out.push(`  ${Math.round(w * fx)},${Math.round(h * fy)}: ${name(el)}`)
+      const x = Math.round(w * fx)
+      const y = Math.round(h * fy)
+      const el = deepestAt(x, y)
+      if (!el) continue
+      // Ours is not a reason to say nothing: a scrim, a sheet or a splash of
+      // ours left over covers the screen exactly as thoroughly as YouTube's.
+      const mine = OURS.has(el.tagName) ? '' : ' ←'
+      out.push(`  ${x},${y}: ${name(el)}${mine}`)
     }
   }
-  return out.length > 0 ? out : ['  전부 RenewTube']
+  return out.length > 0 ? out : ['  아무것도 없음']
+}
+
+/**
+ * Anything painted over the app that the app did not put there.
+ *
+ * The question a report cannot answer for itself: "뭔가 안 보이는 게 화면을
+ * 덮고 있다". The picture is the usual answer — parked, it is click-through,
+ * so a tap goes past it to the button underneath while it covers what is
+ * there, which is exactly how it reads. Named here rather than left to be
+ * worked out from the numbers above.
+ */
+function covers(engine: Engine): string[] {
+  const out: string[] = []
+  const player = document.getElementById('movie_player')
+  const slot = document.querySelector('oc-easy-mode')?.shadowRoot?.querySelector('.slot') as HTMLElement | null
+  const hidden = slot === null || slot.classList.contains('hidden')
+  if (player) {
+    const r = player.getBoundingClientRect()
+    const onScreen = r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight && r.width > 1 && r.height > 1
+    if (onScreen && hidden) {
+      out.push(`  ⚠ 화면을 숨겼는데 재생기가 화면 안에 있습니다: ${rect(player)} · 터치통과 ${getComputedStyle(player).pointerEvents}`)
+    } else if (onScreen && slot) {
+      const s = slot.getBoundingClientRect()
+      const off = Math.round(Math.abs(r.left - s.left)) + Math.round(Math.abs(r.top - s.top))
+      if (off > 8) out.push(`  ⚠ 재생기가 자리(${rect(slot)})를 벗어나 있습니다: ${rect(player)}`)
+    }
+  }
+  // Anything of ours that is still floating: a menu, a sheet, a scrim, the
+  // boot splash. Each of these is meant to be gone the moment it is dismissed.
+  const over = document.querySelector('oc-easy-mode-overlay')?.shadowRoot
+  const floating = over ? Array.from(over.querySelectorAll('.scrim, .menu, .splash, .modal')) : []
+  for (const el of floating) out.push(`  ⚠ 떠 있는 것: ${name(el)} ${rect(el)}`)
+  if (engine.arrivalHeld) out.push('  · 도착 보류 중(누르면 재생)')
+  return out.length > 0 ? out : ['  없음']
 }
 
 /** The player's ancestors, with the four properties that decide whether it can be seen. */
@@ -123,6 +183,36 @@ export function diagnose(engine: Engine, version: string): string {
     lines.push('플레이어 조상:')
     lines.push(...chain(player))
   }
+  // The app's own box against the screen it is supposed to be.
+  //
+  // Two reports arrived with the header perfect and everything under it black,
+  // and in both of them the player bar was missing as well — which a blank list
+  // does not explain, because the bar is not in the list. An app taller than
+  // the visible area does explain it: the bar is below the fold, off the bottom
+  // of the phone, and the middle is empty ground. `dvh` is meant to be exactly
+  // the visible area, and if it is not on some browser then that is the bug,
+  // so the numbers that would say so are printed here.
+  const host = document.querySelector('oc-easy-mode') as HTMLElement | null
+  const shadow = host?.shadowRoot
+  const appEl = shadow?.querySelector('.app') ?? null
+  const mainEl = shadow?.querySelector('.main') ?? null
+  const barEl = shadow?.querySelector('.bar') ?? null
+  const vv = window.visualViewport
+  lines.push('')
+  lines.push('앱의 자리')
+  lines.push(`  앱 ${rect(appEl)} · 목록 ${rect(mainEl)} (자식 ${mainEl ? mainEl.children.length : 0}개) · 바 ${rect(barEl)}`)
+  lines.push(
+    `  보이는 영역 ${window.innerWidth}x${window.innerHeight} · visual ${vv ? `${Math.round(vv.width)}x${Math.round(vv.height)} @${Math.round(vv.offsetTop)}` : '없음'} · client ${document.documentElement.clientWidth}x${document.documentElement.clientHeight} · 화면 ${window.screen.width}x${window.screen.height}`,
+  )
+  if (barEl) {
+    const b = barEl.getBoundingClientRect()
+    if (b.bottom > window.innerHeight + 1) lines.push(`  ⚠ 바가 화면 아래로 ${Math.round(b.bottom - window.innerHeight)}px 넘어갑니다`)
+    if (b.width < 1 || b.height < 1) lines.push('  ⚠ 바가 그려지지 않았습니다')
+  }
+  if (mainEl && mainEl.children.length === 0) lines.push('  ⚠ 목록이 비어 있습니다')
+  lines.push('')
+  lines.push('덮고 있는 것:')
+  lines.push(...covers(engine))
   lines.push('')
   lines.push('맨 위에 있는 것:')
   lines.push(...onTop())
