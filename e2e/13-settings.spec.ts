@@ -109,6 +109,11 @@ test('화면 진단 prints the screen in words, and the text is the report', asy
     expect(text).toContain('맨 위에 있는 것:')
     expect(text).toContain('video:')
     expect(text).toContain('광고:')
+    // And the fifth, added with the recovery ladder: what has been tried to
+    // make this track play, which is the half of the report a screenshot of a
+    // dead player can never carry.
+    expect(text).toContain('복구:')
+    expect(text).toContain('시계 멈춘 지')
   } finally {
     await h.close()
   }

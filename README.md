@@ -80,12 +80,19 @@ one else. YouTube's DOM is never edited: the page is hidden with CSS and the
 player is placed over RenewTube's stage, so leaving is a deletion, not a
 restore. The details are in [docs/architecture.md](docs/architecture.md).
 
+A pressed track has three possible endings and no fourth: it plays, or the page
+moves to the video's own address and it plays there, or it is given up and the
+queue carries on and says so. What that guarantee rests on, and the laboratory
+of players built to fail that holds it in place, is in
+[docs/playback.md](docs/playback.md).
+
 ## Development
 
 ```bash
 npm install
 npm run build     # → dist/
 npm test          # builds, then runs the e2e suite against live youtube.com
+npm run test:lab  # the playback fault matrix; no network, ~2.5 minutes
 npm run check     # types only
 npm run zip       # renewtube.zip from dist/
 npm run site      # assembles the website the way GitHub Pages does

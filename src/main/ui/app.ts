@@ -1373,7 +1373,16 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   window.addEventListener('resize', measureStage, { passive: true })
 
   let showing = engine.current?.videoId
+  // A track the engine has given up on, said once. Everything else about the
+  // recovery is silent on purpose — a track that took a moment longer than
+  // usual is not news — but the queue moving on by itself has to be explained,
+  // or it reads as the app choosing its own music.
+  let toldAbout: string | undefined
   const offChange = engine.subscribe(() => {
+    if (engine.trouble !== undefined && engine.trouble !== toldAbout) {
+      toldAbout = engine.trouble
+      ctx.say(t('이 곡은 재생할 수 없어 다음 곡으로 넘어갑니다'), true)
+    }
     const id = engine.current?.videoId
     if (id !== showing) {
       showing = id

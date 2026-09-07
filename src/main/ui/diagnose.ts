@@ -105,6 +105,17 @@ export function diagnose(engine: Engine, version: string): string {
   } else {
     lines.push('  video: 없음')
   }
+  // The ladder, which is the half of a "재생이 안 돼요" report that a screenshot
+  // can never carry: whether anything was asking for sound, what has already
+  // been tried for this track, and how long since the clock last moved.
+  const r = engine.recovery
+  const spent = [r.spent.nav ? '이동' : '', r.spent.push ? '재요청' : '', r.spent.reload ? '새로고침' : ''].filter(Boolean)
+  lines.push(
+    `  복구: 요청 ${r.wants ? '있음' : '없음'}${r.failing ? ' · 실패 판정' : ''} · 쓴 수단 ${spent.length > 0 ? spent.join(',') : '없음'} · 포기 ${r.gaveUp ?? '없음'}`,
+  )
+  lines.push(
+    `        요청 후 ${r.sinceAsk < 0 ? '-' : `${(r.sinceAsk / 1000).toFixed(1)}s`} · 시계 멈춘 지 ${r.sinceProgress < 0 ? '-' : `${(r.sinceProgress / 1000).toFixed(1)}s`} · 불러옴 ${r.loaded ? '예' : '아니오'} · 들린적 ${r.heard ? '예' : '아니오'} · 제스처대기 ${r.gesture ? '예' : '아니오'} · 광고판정 ${r.advert ? '예' : '아니오'}`,
+  )
   lines.push('')
 
   lines.push(`플레이어 위치: ${rect(player)}`)

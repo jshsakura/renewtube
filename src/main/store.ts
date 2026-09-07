@@ -411,6 +411,53 @@ export function takeArrival(): string | null {
   }
 }
 
+// ── What has already been tried to make a track play ────────────────────────
+//
+// The recovery ladder spends one rung at a time, and one of those rungs is a
+// navigation — so the record of what has been tried has to outlive the page
+// that tried it, or the arriving page starts the same ladder from the top and
+// the two bounce off each other for ever. Keyed by the video, so a different
+// track always begins with a clean sheet.
+
+const RESCUE_KEY = 'oc-easy-mode:rescue'
+
+export interface Rescue {
+  id: string
+  /** We have handed this track to the watch page. */
+  nav?: boolean
+  /** We have pushed it into the player a second time. */
+  push?: boolean
+  /** We have rebuilt the page around it. */
+  reload?: boolean
+}
+
+/** What has been tried for `id`, which is nothing at all if the mark is another track's. */
+export function rescueRecord(id: string): Rescue {
+  try {
+    const raw = localStorage.getItem(RESCUE_KEY)
+    if (raw) {
+      const r = JSON.parse(raw) as Rescue
+      if (r && r.id === id) return r
+    }
+  } catch {
+    // A browser without storage simply starts every page with a clean sheet.
+  }
+  return { id }
+}
+
+export function saveRescue(r: Rescue): void {
+  try {
+    localStorage.setItem(RESCUE_KEY, JSON.stringify(r))
+  } catch {}
+}
+
+/** Forgotten the moment sound comes out, so the next trouble starts from the top. */
+export function clearRescue(): void {
+  try {
+    localStorage.removeItem(RESCUE_KEY)
+  } catch {}
+}
+
 // ── What was searched for ──────────────────────────────────────────────────
 //
 // The panel opens on an empty field, and an empty field over an empty panel is

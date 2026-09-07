@@ -5,6 +5,7 @@
 // See i18n.ts.
 
 export const EN: Record<string, string> = {
+  "이 곡은 재생할 수 없어 다음 곡으로 넘어갑니다": "This track will not play, so the next one starts",
   "둘러보기": "Browse",
   "검색": "Search",
   "홈": "Home",

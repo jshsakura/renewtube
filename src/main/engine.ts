@@ -7,7 +7,7 @@
 import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
-import { load, markArrival, remember, save, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Theme, type VideoLayout } from './store.ts'
+import { clearRescue, load, markArrival, remember, rescueRecord, save, saveRescue, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
 import { narrowNow } from './ui/device.ts'
 
 /**
@@ -41,6 +41,38 @@ const STUCK_UNSTARTED_MS = 2000
  * stays empty past it.
  */
 const DORMANT_MS = 2200
+
+/**
+ * How long one rung of the recovery ladder is given before the next is tried.
+ *
+ * Each rung is a real attempt — a second push into the player, a rebuilt page —
+ * and each needs room to work before it is called a failure. Long enough for a
+ * load to land, short enough that the whole ladder is spent inside ten seconds
+ * rather than leaving someone looking at a dead transport.
+ */
+const RESCUE_STEP_MS = 2500
+
+/**
+ * An unbroken wait this long is not a load any more.
+ *
+ * A buffering element is left alone, because that is what an ordinary slow
+ * start looks like from outside. But a wait with no end is the same silence as
+ * a player that never took the track, and it deserves the same ladder. Well
+ * past `STALL_AFTER_MS`, where the transport already stops claiming to load.
+ */
+const STALL_HARD_MS = 15_000
+
+/**
+ * How long a claimed advert may sit with nothing playing before it is not
+ * believed.
+ *
+ * `ad-showing` and a child in `.video-ads` are both present, with no advert
+ * anywhere, for the whole of the stuck-unstarted state — measured. An advert
+ * that is showing is by definition playing, so one whose element is paused for
+ * this long is a phantom, and a phantom must not be able to hold the rescue off
+ * for ever. Longer than the gap between two adverts in a break.
+ */
+const AD_PAUSED_MS = 6000
 
 export type Listener = () => void
 
@@ -113,8 +145,52 @@ export class Engine {
    */
   private wantsPlaying = false
 
-  /** The load we have already navigated away for, so the fallback fires once. */
-  private navigatedForSeq = -1
+  /**
+   * This track is meant to be playing, whether or not it has begun.
+   *
+   * Not the same thing as `wantsPlaying`, which is the nudge and stops the
+   * moment sound arrives. This one outlives the start and is the gate the
+   * recovery ladder reads: a track that played for a minute and then went
+   * silent is as much a failure as one that never started, and only something
+   * deliberate — a pause, the sleep timer, the end of the queue — clears it.
+   */
+  private wantsSound = false
+
+  /** When the element's clock last moved, which is the only proof of progress. */
+  private progressAt = 0
+  /** Where the clock was at that moment. */
+  private progressTime = -1
+  /**
+   * This load has been heard at least once.
+   *
+   * It decides what a paused element means. A track that never started and is
+   * paused is the failure this whole ladder exists for; a track that played and
+   * is now paused is somebody having pressed pause — from the
+   * Picture-in-Picture window, the lock screen, a headset button — and pulling
+   * it out from under them would be the worst bug in the set. Nothing here can
+   * ask who paused it, so this is what tells the two apart.
+   */
+  private everPlayed = false
+
+  /** What the ladder has already spent on the current track, across pages. */
+  private rescue: Rescue = { id: '' }
+  /** When the last rung was taken, so one is tried at a time. */
+  private rescueAt = 0
+  /** The track the ladder has run out of rungs for; never rescued again. */
+  private gaveUpOn: string | undefined
+  /**
+   * The browser refused to play without a gesture.
+   *
+   * WebKit answers `play()` with NotAllowedError when the activation is spent,
+   * which is a loaded track waiting for a press — not a broken one. The ladder
+   * stops there: navigating or reloading would only lose the load that
+   * succeeded, and the next press starts it.
+   */
+  private needsGesture = false
+  /** When the current phantom advert began; undefined while none is claimed. */
+  private adPausedSince: number | undefined
+  /** Whether sound was coming out at the last look, for a player swapped under us. */
+  private wasSounding = false
   /**
    * Whether the listener pressed mute.
    *
@@ -167,6 +243,20 @@ export class Engine {
 
   attach(player: YtPlayer): void {
     if (this.player === player) return
+    // YouTube swaps the player as it navigates itself, and `reattach` hands us
+    // the new one. Everything hung on the old one goes first: a listener left
+    // behind talks about a player nobody is driving, and a second interval
+    // means every check in `tick` runs twice as often as it was written for.
+    const swapped = this.player !== null
+    if (this.player) {
+      try {
+        this.player.removeEventListener('onStateChange', this.onStateChange)
+      } catch {
+        // A player already torn down has nothing to unsubscribe from.
+      }
+    }
+    if (this.tickTimer) clearInterval(this.tickTimer)
+    this.tickTimer = undefined
     this.player = player
     // What the page was set to before we touched it. We are about to write our
     // own volume into YouTube's player, and it is YouTube's player: leaving
@@ -205,6 +295,22 @@ export class Engine {
     this.applyQuality()
     this.adoptPlaying()
     this.holdArrival()
+    // A player swapped out from under a playing track takes the sound with it.
+    // The new one knows nothing about what was playing, so it is told — the
+    // alternative is music that stops when the page rearranges itself, with
+    // nothing in the transport to say why.
+    if (swapped && this.loadedId !== undefined && this.wasSounding && !this.wantPaused && this.gaveUpOn !== this.loadedId) {
+      const named = this.namedVideo()
+      // A new player that already has our track is not a player to push a
+      // track into: that would start the song again from nothing. Asking to
+      // hear it is enough, and the start is deterministic from there.
+      if (named === this.loadedId) {
+        this.wantsPlaying = true
+        this.wantsSound = true
+      } else {
+        this.repush(this.loadedId)
+      }
+    }
     this.tickTimer = window.setInterval(this.tick, 500)
     this.tick()
     this.changed()
@@ -242,6 +348,7 @@ export class Engine {
     for (const ev of ['canplay', 'loadeddata', 'playing'] as const) this.boundVideo?.removeEventListener(ev, this.onElementReady)
     this.boundVideo = null
     this.wantsPlaying = false
+    this.wantsSound = false
     this.player = null
     if (this.tickTimer) clearInterval(this.tickTimer)
     this.tickTimer = undefined
@@ -306,6 +413,19 @@ export class Engine {
     Engine.arrivalSeen = true
     const ours = takeArrival()
     const here = videoIdInUrl()
+    // Our own arrival is a track someone pressed, still waiting to be heard.
+    // Saying so here is what puts the watch page under the same ladder as
+    // everywhere else: without it the engine has no intent on this page at all
+    // — it only adopts whatever plays — so an arrival that never starts is a
+    // silence nothing is watching. YouTube usually starts it within the grace
+    // period and the intent is dropped unused.
+    if (here && ours === here) {
+      this.loadedId = here
+      this.loadAskedAt = Date.now()
+      this.rescue = rescueRecord(here)
+      this.wantsPlaying = true
+      this.wantsSound = true
+    }
     if (!here || ours === here) return
     // Late is not an arrival. A page that has been open for a while and then
     // gets the mode switched on was playing by the reader's choice.
@@ -417,68 +537,275 @@ export class Engine {
     const el = this.videoEl()
     if (!el) return
     if (el.error) {
+      // Nothing to start; the ladder below reads the same error and acts.
       this.wantsPlaying = false
       return
     }
     if (!el.paused) {
-      this.wantsPlaying = false
+      // Sound, but not necessarily ours: until the load has landed this is the
+      // track that was playing before, and taking it as an answer is what left
+      // a failed press with nothing watching it.
+      if (this.loading === undefined) this.wantsPlaying = false
       return
     }
-    if (this.adShowing()) return
+    if (this.adBlocking()) return
     try {
       this.player?.playVideo()
     } catch {
       // The element below is what actually carries the sound.
     }
-    void Promise.resolve(el.play()).catch(() => {})
+    void Promise.resolve(el.play()).then(
+      () => {
+        this.needsGesture = false
+      },
+      (e: unknown) => {
+        // A refusal for want of a gesture is not a broken track: it is a
+        // loaded one, a press away. Anything else is left to the ladder.
+        if ((e as { name?: string } | null)?.name === 'NotAllowedError') this.needsGesture = true
+      },
+    )
   }
   /**
-   * The last resort when the in-page player will not take the track: hand it to
-   * the watch page.
+   * Whether the track we are on is failing, as opposed to merely starting.
    *
-   * On a signed-in home the hidden `ytd-watch-flexy` player accepts
-   * loadVideoById and then does nothing — getVideoData stays empty and the
-   * element sits at NETWORK_EMPTY with no source, so tryStart has nothing to
-   * start (measured 2026-09-06 from the owner's diagnostics; the same player
-   * plays signed out). Rather than leave a dead stage, navigate to the watch
-   * page, where YouTube builds a live player of its own — exactly what the
-   * no-player branch of load() already does, and how this worked before the
-   * player was driven in place.
+   * Asked of the element, which cannot be wrong about whether sound is coming
+   * out of it. Four things count as failing, and everything else is left alone:
+   * an element that is not there, one that is paused while we asked to hear it,
+   * one that has given up on its source, and one whose wait has stopped ending.
    *
-   * Desktop only. A phone (narrowNow, which also catches Orion on an iPhone)
-   * keeps playing in place, because there an arrival cannot start itself and a
-   * navigation would land on a dark, paused stage. Fires once per load, only
-   * after a grace period a healthy load clears well inside, and only when the
-   * player is genuinely empty — not merely slow (a loading element is at
-   * NETWORK_LOADING, not NETWORK_EMPTY).
+   * The three exemptions are the ones a rescue would ruin: a track waiting for
+   * a press it will get, the page's own start being held down on arrival, and a
+   * genuine advert, which is playing and will finish.
    */
-  private rescueDormant(): void {
-    // The last resort: when we asked to play and, past the grace period, no
-    // sound is coming out, hand the track to the watch page where YouTube
-    // builds a live player. It fires whether the in-page player is empty or
-    // holding something it will not start — the owner's "재생기엔 뭐가
-    // 물려있고 그럼 소리나고 가던지". Runs on the phone too now; there the
-    // arrival lands paused, but its play button works, unlike the stuck one.
-    //
-    // The gate is `tryStart` having failed: this only looks while wantsPlaying
-    // is set (cleared the instant sound is actually out), past DORMANT_MS a
-    // healthy load clears well inside, off the watch page, and never during an
-    // advert. A buffering element is not paused, so a slow load is left to
-    // finish rather than reloaded.
-    if (this.loadedId === undefined || this.loadSeq === this.navigatedForSeq) return
-    if (Date.now() - this.loadAskedAt < DORMANT_MS) return
-    if (/^\/watch/.test(location.pathname)) return
-    if (this.adShowing()) return
+  private needsRescue(): boolean {
+    const id = this.loadedId
+    if (id === undefined || id === this.gaveUpOn) return false
+    // Nothing is meant to be playing: paused, asleep, or the queue has run out.
+    if (!this.wantsSound) return false
+    // A track loaded and waiting for a press is not a track in trouble — but
+    // only a loaded one. A refusal over an element with nothing in it is not a
+    // press away from anything, and taking it for one would leave a dead
+    // player sitting there with the ladder switched off.
+    if (this.needsGesture && this.elementLoaded()) return false
+    // Held on purpose: the page's own start, put down until someone presses.
+    if (this.holding) return false
+    if (this.adBlocking()) return false
     const el = this.videoEl()
-    // Making sound, or buffering toward it? Leave it. Only a genuinely paused
-    // (or missing) element — nothing loaded, a preview YouTube paused, or our
-    // track the player took but never started — gets the watch page.
-    if (el && !el.paused && !el.ended) return
-    this.navigatedForSeq = this.loadSeq
-    setQuickOn(true)
-    markArrival(this.loadedId)
+    if (!el) return true
+    // The end of a track is the queue's business, not the ladder's.
+    if (el.ended) return false
+    // The element gave up on this source: no push, no wait and no press will
+    // make it play.
+    if (el.error) return true
+    // Asked to play and not playing. Only for a track that was never heard:
+    // one that played and stopped was paused by somebody, and a pause is not
+    // something to recover from. A track that dies mid-way stalls rather than
+    // pausing, and the clock below is what catches that.
+    if (el.paused) return !this.everPlayed
+    // Something is playing, and it is fine if it is ours and moving. The
+    // player's own account of which video that is cannot be trusted on its
+    // own — it answers Unstarted over a playing track and empty over a dormant
+    // one — so the element's clock is what decides, and the id only says whose
+    // clock it is. A track still loading while the last one plays on is the
+    // press that produced nothing, and it reads exactly like this.
+    const named = this.namedVideo()
+    const somebodyElse = !!named && named !== id && this.loading !== undefined
+    const moving = Date.now() - this.progressAt < STALL_HARD_MS
+    if (!somebodyElse && moving) return false
+    return Date.now() - this.loadAskedAt > STALL_HARD_MS
+  }
+
+  /**
+   * Everything there is to do about a track that will not play, in order.
+   *
+   * One rung at a time, each with room to work, each remembered across the
+   * page it may rebuild:
+   *
+   * 1. **Hand it to the watch page.** The signed-in home player takes
+   *    `loadVideoById` and does nothing — `getVideoData` empty, the element at
+   *    NETWORK_EMPTY, no error (measured 2026-09-06 from the owner's
+   *    diagnostics; the same player plays signed out). Driving it harder does
+   *    not wake it, and the watch page builds a live player of its own. On a
+   *    phone the arrival lands paused, but that player's play button works,
+   *    unlike the stuck one.
+   * 2. **Push it in once more.** Where a navigation is not available — already
+   *    on the watch page, or one that was refused — a second `loadVideoById` is
+   *    what clears a player that swallowed the first, and it is free.
+   * 3. **Rebuild the page around it.** A watch page whose own player is dead
+   *    has one thing left: a reload, which builds the player again from
+   *    nothing, with the arrival mark saying the track may start.
+   * 4. **Give the track up and move on.** A track nothing will play is not
+   *    worth a fourth attempt; the queue is what the reader asked for, and it
+   *    carries on without this one rather than stopping on it.
+   *
+   * A rung is only ever taken once per track, and the record survives the
+   * navigation — otherwise the arriving page would start the same ladder from
+   * the top and the two would bounce a track between them for ever.
+   */
+  private recover(): void {
+    const id = this.loadedId
+    if (id === undefined) return
+    if (Date.now() - this.loadAskedAt < DORMANT_MS) return
+    if (Date.now() - this.rescueAt < RESCUE_STEP_MS) return
+    if (this.rescue.id !== id) this.rescue = rescueRecord(id)
+    this.rescueAt = Date.now()
+    const onWatch = /^\/watch/.test(location.pathname)
+    if (!onWatch && !this.rescue.nav) {
+      this.rescue.nav = true
+      saveRescue(this.rescue)
+      setQuickOn(true)
+      markArrival(id)
+      save(this.state)
+      location.assign(`/watch?v=${id}`)
+      return
+    }
+    if (!this.rescue.push) {
+      this.rescue.push = true
+      saveRescue(this.rescue)
+      this.repush(id)
+      return
+    }
+    if (onWatch && !this.rescue.reload) {
+      this.rescue.reload = true
+      saveRescue(this.rescue)
+      setQuickOn(true)
+      markArrival(id)
+      save(this.state)
+      location.reload()
+      return
+    }
+    this.giveUp(id)
+  }
+
+  /** What the player says it is on, and nothing if it will not say. */
+  private namedVideo(): string | undefined {
+    try {
+      return this.player?.getVideoData()?.video_id
+    } catch {
+      // A player mid-teardown answers by throwing, which is not an answer.
+      return undefined
+    }
+  }
+
+  /**
+   * Whether the element has media in it, as opposed to being empty.
+   *
+   * `HAVE_CURRENT_DATA` is the point at which a press could actually start
+   * something. A dormant player leaves the element at nothing loaded, no
+   * source, `NETWORK_EMPTY` — measured — and no press reaches that.
+   */
+  private elementLoaded(): boolean {
+    const el = this.videoEl()
+    if (!el) return false
+    return el.readyState >= 2 || el.currentSrc !== ''
+  }
+
+  /** Hands the player the track again, from the top, without counting it as a new load. */
+  private repush(id: string): void {
+    const p = this.player
+    if (!p) return
+    this.loading = id
+    this.loadAskedAt = Date.now()
+    this.progressAt = Date.now()
+    this.progressTime = -1
+    this.everPlayed = false
+    this.wantPaused = false
+    this.wantsPlaying = true
+    this.wantsSound = true
+    try {
+      p.loadVideoById(id)
+      p.playVideo()
+    } catch {
+      // A player that throws is one the next rung navigates away from.
+    }
+  }
+
+  /**
+   * Marks the track unplayable and carries on down the queue.
+   *
+   * Every rung has been spent on it. Sitting on a dead track is the failure the
+   * reader actually feels — the music simply stopped — so the queue moves, and
+   * the row is marked so `next` will not walk back into it. Nothing is ever
+   * rescued for this id again, which is what stops the ladder looping on a
+   * queue with nothing playable left in it.
+   */
+  private giveUp(id: string): void {
+    this.gaveUpOn = id
+    this.wantsPlaying = false
+    this.wantsSound = false
+    this.loading = undefined
+    clearRescue()
+    const track = this.state.queue.find((t) => t.videoId === id)
+    if (track) track.unavailable = true
+    this.trouble = id
     save(this.state)
-    location.assign(`/watch?v=${this.loadedId}`)
+    this.changed()
+    // Only if it is still the track we are sitting on; the queue may have been
+    // moved on by hand while the ladder was working.
+    if (this.current?.videoId === id) this.next()
+  }
+
+  /**
+   * The last track the ladder ran out of rungs for, for the screen to say so.
+   *
+   * Cleared as soon as anything plays, so it only ever describes now.
+   */
+  trouble: string | undefined
+
+  /**
+   * Where the recovery stands, for the diagnosis screen.
+   *
+   * The one thing a report of "it will not play" could never say: whether
+   * anything was asking it to, what has already been tried for it, and how long
+   * it has been since the clock last moved. Read-only, and a snapshot.
+   */
+  get recovery(): {
+    wants: boolean
+    spent: Rescue
+    gaveUp: string | undefined
+    gesture: boolean
+    loaded: boolean
+    heard: boolean
+    sinceAsk: number
+    sinceProgress: number
+    advert: boolean
+    failing: boolean
+  } {
+    return {
+      wants: this.wantsSound,
+      spent: { ...this.rescue },
+      gaveUp: this.gaveUpOn,
+      gesture: this.needsGesture,
+      loaded: this.elementLoaded(),
+      heard: this.everPlayed,
+      sinceAsk: this.loadAskedAt === 0 ? -1 : Date.now() - this.loadAskedAt,
+      sinceProgress: this.progressAt === 0 ? -1 : Date.now() - this.progressAt,
+      advert: this.adBlocking(),
+      failing: this.needsRescue(),
+    }
+  }
+
+  /**
+   * Whether an advert is holding the element, believed only while it plays.
+   *
+   * `ad-showing` and a child in `.video-ads` are both there for the whole of
+   * the stuck-unstarted state with no advert anywhere — measured — and an
+   * advert is the one thing that stops both `tryStart` and the ladder. Left
+   * unchecked, a phantom one is silence nothing can recover from. An advert
+   * that is showing is playing; one whose element stays paused is not real.
+   */
+  private adBlocking(): boolean {
+    if (!this.adShowing()) {
+      this.adPausedSince = undefined
+      return false
+    }
+    const el = this.videoEl()
+    if (el && !el.paused && !el.ended) {
+      this.adPausedSince = undefined
+      return true
+    }
+    this.adPausedSince ??= Date.now()
+    return Date.now() - this.adPausedSince < AD_PAUSED_MS
   }
   private watchElement(): void {
     const el = this.videoEl()
@@ -552,6 +879,7 @@ export class Engine {
       if (this.wantPaused) {
         this.wantPaused = false
         this.wantsPlaying = false
+        this.wantsSound = false
         p.pauseVideo()
       }
       // The rate is re-applied *here*, where the load has actually landed.
@@ -612,9 +940,33 @@ export class Engine {
     // element's readiness events (watchElement), which is what makes the
     // start deterministic rather than a tick lottery; this line is the
     // fallback for the element that was already ready when we bound it.
-    if (this.wantsPlaying && this.sounding()) this.wantsPlaying = false
+    // The clock, watched here and nowhere else. Every judgement about whether a
+    // track is playing comes back to whether this number moves.
+    const clock = this.videoEl()?.currentTime ?? -1
+    if (clock !== this.progressTime) {
+      if (this.progressTime >= 0 && clock > 0 && this.loading === undefined) this.everPlayed = true
+      this.progressTime = clock
+      this.progressAt = Date.now()
+    }
+    // Landed sound only: while a load is still pending, whatever is coming out
+    // of the element belongs to the track before it.
+    if (this.wantsPlaying && this.loading === undefined && this.sounding()) this.wantsPlaying = false
     if (this.wantsPlaying) this.tryStart()
-    if (this.wantsPlaying) this.rescueDormant()
+    // Sound is the only proof, and it wipes the slate: the ladder starts from
+    // the top for whatever goes wrong next, rather than carrying yesterday's
+    // spent rungs into it.
+    if (this.sounding() && this.loading === undefined && !ad) {
+      this.wasSounding = true
+      if (this.rescue.nav || this.rescue.push || this.rescue.reload) {
+        this.rescue = { id: this.loadedId ?? '' }
+        clearRescue()
+      }
+      if (this.trouble !== undefined) this.trouble = undefined
+      this.needsGesture = false
+    } else if (!this.sounding()) {
+      this.wasSounding = false
+    }
+    if (this.needsRescue()) this.recover()
     // The rate is re-asserted, not set. YouTube's player drops it back to 1 at
     // moments of its own choosing — a new video becoming ready, a quality
     // change — and applying it once at any single point loses that race
@@ -975,6 +1327,7 @@ export class Engine {
   private fallAsleep(): void {
     this.sleep = undefined
     this.wantsPlaying = false
+    this.wantsSound = false
     if (this.position.playing) this.player?.pauseVideo()
     this.changed()
   }
@@ -1015,12 +1368,32 @@ export class Engine {
     this.loadAskedAt = Date.now()
     this.wantPaused = false
     this.endedFor = undefined
+    // A new track is a clean sheet: its own ladder, nothing held over, and no
+    // memory of the last one having been given up on.
+    this.rescue = rescueRecord(track.videoId)
+    this.rescueAt = 0
+    this.gaveUpOn = undefined
+    this.needsGesture = false
+    this.adPausedSince = undefined
+    this.trouble = undefined
     remember(track)
+    this.progressAt = Date.now()
+    this.progressTime = -1
+    this.everPlayed = false
+    this.wantsSound = true
     if (this.player) {
       this.wantsPlaying = true
       this.unlockPlayback()
-      this.player.loadVideoById(track.videoId)
-      this.player.playVideo()
+      // A player that throws at being handed a track has still been asked for
+      // one, and the ladder above is what answers for it. Letting the throw out
+      // of here would take the press's own handler down with it, and with it
+      // the rate, the mute and the redraw below.
+      try {
+        this.player.loadVideoById(track.videoId)
+        this.player.playVideo()
+      } catch {
+        // Nothing here depends on the player having accepted it.
+      }
       this.applyRate()
       // Pressing a track is asking to hear it. If the page handed us a player
       // it had muted for its own preview, that mute goes now.
@@ -1050,9 +1423,15 @@ export class Engine {
       // press looks ignored, which is exactly how it looked.
       this.wantPaused = true
       this.wantsPlaying = false
+      this.wantsSound = false
     } else {
       this.wantPaused = false
       this.wantsPlaying = true
+      this.wantsSound = true
+      // The press is the gesture the browser was holding out for, so the
+      // exemption it bought goes with it: if this one does not play either,
+      // the ladder is free to work again.
+      this.needsGesture = false
       this.unlockPlayback()
       p.playVideo()
       this.syncMute()
@@ -1116,12 +1495,19 @@ export class Engine {
   }
 
   private ended(): void {
+    // Whatever happens next sets its own intent: the next track's load, the
+    // repeat below, or nothing at all when the queue has run out.
+    this.wantsSound = false
     if (this.sleep && 'atTrackEnd' in this.sleep) {
       this.sleep = undefined
       this.changed()
       return
     }
     if (this.state.repeat === 'one') {
+      this.wantsSound = true
+      this.wantsPlaying = true
+      this.loadAskedAt = Date.now()
+      this.progressAt = Date.now()
       this.player?.seekTo(0, true)
       this.player?.playVideo()
       return

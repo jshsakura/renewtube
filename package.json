@@ -1,7 +1,7 @@
 {
   "name": "renewtube",
   "private": true,
-  "version": "0.23.2",
+  "version": "0.24.0",
   "type": "module",
   "description": "Flips youtube.com into a clean, simple player for both music and video: search, feeds, queue and playlist management over YouTube's own player.",
   "author": "OpenCourse",
@@ -12,12 +12,14 @@
     "check": "tsc --noEmit",
     "icons": "python3 scripts/make-icons.py",
     "zip": "npm run build && cd dist && zip -qr ../renewtube.zip . && cd .. && echo 'renewtube.zip'",
-    "e2e": "npm run build && playwright test",
-    "test": "npm run build && playwright test",
+    "e2e": "npm run build && node scripts/build-lab.mjs && playwright test",
+    "test": "npm run build && node scripts/build-lab.mjs && playwright test",
     "site": "node scripts/site.mjs",
     "shots": "npm run build && SHOT_DIR=site npx playwright test --config=playwright.tools.ts shots",
     "page": "npx playwright test --config=playwright.tools.ts page-shot",
-    "test:webkit": "npm run build && playwright test --config=playwright.webkit.config.ts"
+    "test:webkit": "npm run build && playwright test --config=playwright.webkit.config.ts",
+    "build:lab": "node scripts/build-lab.mjs",
+    "test:lab": "node scripts/build-lab.mjs && playwright test 16-playback"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
