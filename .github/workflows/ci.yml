@@ -22,7 +22,7 @@ jobs:
 
       # 브라우저를 띄우지 않는 테스트만 돈다. 나머지는 live 유튜브에 붙으므로
       # CI 에서 돌리면 유튜브의 그날 사정이 우리 빌드의 합격 여부가 된다.
-      - run: npx playwright test e2e/03-parse.spec.ts
+      - run: npx playwright test e2e/03-parse.spec.ts e2e/17-styles.spec.ts
 
       # 재생 실패 매트릭스는 유튜브에 붙지 않는다. 일부러 고장 나는 재생기를
       # 만들고(e2e/lab) page.route 로 youtube.com 을 통째로 대신 응답하므로,

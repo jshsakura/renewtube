@@ -261,6 +261,88 @@ test('the picture never covers the header', async () => {
   }
 })
 
+test('hiding the picture takes it off the screen, not merely behind the app', async () => {
+  // Behind was a bet on YouTube's stacking, and that bet is not ours to win.
+  // `position: fixed` resolves against the nearest transformed ancestor rather
+  // than the viewport, and a z-index only ranks inside whatever context that
+  // ancestor makes — both of them YouTube's, and both different signed in.
+  // The owner's phone showed the parked picture painted across the list the
+  // moment 소리만 was pressed (2026-09-07, "비디오숨김하면 레이아웃 개박살").
+  // Off the side of the screen there is nothing left to argue about.
+  const { context, page } = await phone()
+  try {
+    await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    const ui = page.locator('oc-easy-mode')
+    await expect(ui.locator('.app.narrow')).toBeVisible()
+    const first = ui.locator('.tile:not([aria-hidden]), .row:not([aria-hidden])').first()
+    await first.waitFor({ timeout: 60_000 })
+    await first.click()
+    await ui.locator('.bar .vid').click()
+    await expect(ui.locator('.slot')).toHaveClass(/stage/)
+    await ui.locator('.bar .vid').click()
+    await expect(ui.locator('.slot')).toHaveClass(/hidden/)
+
+    const parked = await page.evaluate(() => {
+      const p = document.getElementById('movie_player')
+      if (!p) return null
+      const r = p.getBoundingClientRect()
+      const v = document.querySelector('video')
+      return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), playing: !!v && !v.paused }
+    })
+    expect(parked, 'the player is still in the page, still playing').not.toBeNull()
+    // Not one pixel of it on screen, whichever way the page reads our
+    // coordinates. And still a box with a size: a picture squashed to nothing
+    // is one YouTube starts making its own decisions about.
+    expect(parked!.right).toBeLessThanOrEqual(0)
+    expect(parked!.width).toBeGreaterThan(100)
+  } finally {
+    await context.close()
+  }
+})
+
+test('a transform on the page cannot re-base the app or bring the picture back', async () => {
+  // The quiet way this breaks: `position: fixed` measures itself against the
+  // nearest ancestor with a transform rather than against the viewport. Both of
+  // our nodes and the player are fixed and all three hang off body, so one
+  // animation of YouTube's — for a sheet we are not even showing — moves the
+  // whole application off the screen it is supposed to be. Under our mode the
+  // page holds still instead.
+  const { context, page } = await phone()
+  try {
+    await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    const ui = page.locator('oc-easy-mode')
+    await expect(ui.locator('.app.narrow')).toBeVisible()
+    const first = ui.locator('.tile:not([aria-hidden]), .row:not([aria-hidden])').first()
+    await first.waitFor({ timeout: 60_000 })
+    await first.click()
+    // Whatever the page tries, on either of the two elements above ours.
+    await page.evaluate(() => {
+      document.body.style.transform = 'translateY(-120px)'
+      document.documentElement.style.filter = 'saturate(1)'
+    })
+    await page.waitForTimeout(600)
+    const seen = await page.evaluate(() => {
+      const host = document.querySelector('oc-easy-mode') as HTMLElement
+      const a = host.shadowRoot!.querySelector('.app')!.getBoundingClientRect()
+      const p = document.getElementById('movie_player')!.getBoundingClientRect()
+      return {
+        app: { top: Math.round(a.top), left: Math.round(a.left), w: Math.round(a.width), h: Math.round(a.height) },
+        playerRight: Math.round(p.right),
+        view: { w: innerWidth, h: innerHeight },
+      }
+    })
+    // The app is still exactly the screen.
+    expect(seen.app.top).toBe(0)
+    expect(seen.app.left).toBe(0)
+    expect(seen.app.w).toBe(seen.view.w)
+    expect(Math.abs(seen.app.h - seen.view.h)).toBeLessThanOrEqual(1)
+    // And the parked picture is still nowhere near it.
+    expect(seen.playerRight).toBeLessThanOrEqual(0)
+  } finally {
+    await context.close()
+  }
+})
+
 test('the player bar opens into a full player and closes again', async () => {
   const { context, page } = await phone()
   try {

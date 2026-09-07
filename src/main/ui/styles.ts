@@ -447,8 +447,19 @@ input { font: inherit; color: inherit; }
    in gently as it lands, which turns the skeleton→content change and every
    navigation into a soft settle rather than a jump ("화면 갱신좀 자연스럽게").
    Only the pane's own children, so the bar and the sidebar never move. */
-@keyframes viewEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.main > * { animation: viewEnter 0.24s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+   **Nothing here may ever make the content invisible.** The first cut of this
+   went from opacity 0 and held its ends with animation-fill-mode: both, which
+   means an animation that does not run — a page the system suspended, a phone
+   saving power, a compositor that dropped it — leaves every child of the pane
+   at opacity 0 for good. The header and the bar live outside the pane, so what
+   that produces is precisely the screen that was reported the day it shipped:
+   the top of the app, correct and complete, over a black rectangle where the
+   list should be ("검은화면 전엔없던 증상이야", 2026-09-07).
+   So: no fill, so the resting state is the element's own; and a floor under
+   the opacity, so the worst an animation stuck at its first frame can do is
+   show the list dimmed and eight pixels low, which anyone can read. */
+@keyframes viewEnter { from { opacity: .55; transform: translateY(8px); } }
+.main > * { animation: viewEnter 0.24s cubic-bezier(0.22, 0.61, 0.36, 1); }
 @media (prefers-reduced-motion: reduce) { .main > * { animation: none; } }
 /* Light skeletons need a darker grey than --secondary: on warm paper the
    secondary is one breath from the panel and a static skeleton disappears. */

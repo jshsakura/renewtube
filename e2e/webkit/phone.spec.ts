@@ -51,6 +51,19 @@ test('a track pressed on home plays here, and 영상 mode shows a picture', asyn
   await expect
     .poll(() => page.evaluate(() => { const v = document.querySelector('video')!; return !v.paused }), { timeout: 10_000 })
     .toBe(true)
+
+  // Now hide it again, which is where the owner's screen broke: the parked
+  // picture came back painted over the list. It has to leave the screen
+  // altogether, and the sound has to stay.
+  // Out of the full player first: with the stage up the picture is seated in
+  // the sheet, over the very button that would put it away.
+  await ui.locator('.sheetClose').click()
+  await ui.locator('.bar .vid').click()
+  await expect(ui.locator('.slot')).toHaveClass(/hidden/)
+  await expect
+    .poll(() => page.evaluate(() => Math.round(document.getElementById('movie_player')!.getBoundingClientRect().right)), { timeout: 10_000 })
+    .toBeLessThanOrEqual(0)
+  expect(await page.evaluate(() => { const v = document.querySelector('video')!; return !v.paused })).toBe(true)
 })
 
 test('the settings sheet opens and the menu switches work here too', async ({ context, page }) => {

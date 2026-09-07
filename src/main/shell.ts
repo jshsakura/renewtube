@@ -83,6 +83,17 @@ export interface Shell {
 // It needs no on/off guard: the stylesheet exists only while the mode does.
 const HIDE_CSS = `
 html { overflow: hidden !important; }
+/* Nothing on the way to us may become the viewport.
+ *
+ * A fixed element measures itself against the nearest ancestor carrying a
+ * transform, a filter, perspective or containment, and against the viewport
+ * only when there is none. Both of our nodes and the player are fixed, and all
+ * three hang off body — so one animation of YouTube's on body, for a sheet or
+ * a transition we are not even showing, silently re-bases the whole
+ * application: the app stops being the screen, and whatever is behind it shows
+ * through. Nothing of the page is visible under our mode anyway, so it loses
+ * nothing by holding still. */
+html, body { transform: none !important; filter: none !important; perspective: none !important; contain: none !important; will-change: auto !important; }
 body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
 #movie_player {
   visibility: visible !important;
@@ -585,6 +596,16 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
   // stylesheet, so it leaves when the sheet does.
   const LIFT = 2147482050
   const PLAYER_Z = '2147482100'
+  /**
+   * Where the picture waits when there is nowhere for it to be.
+   *
+   * Far enough left that no page geometry, and no ancestor's transform
+   * reinterpreting our coordinates, can bring any part of a 320-pixel box back
+   * onto a screen. Not off the *top*: a page whose own scrolling we have
+   * stopped still has a document origin, and the left is the axis nothing else
+   * here uses.
+   */
+  const PARKED_X = -20000
   let liftText = ''
   let liftIndex = -1
 
@@ -702,11 +723,31 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
     // A button for a picture nobody can see is a button for nothing.
     vars.setProperty('--oc-pip', next ? 'grid' : 'none')
     if (!next) {
-      // Nowhere to be: park it behind the app, still playing, never seen.
+      // Nowhere to be: parked off the side of the screen, still playing, and
+      // this time not merely *behind* anything.
+      //
+      // Behind was a bet, and the bet is not ours to win. `position: fixed`
+      // resolves against the nearest ancestor with a transform, a filter or
+      // containment rather than against the viewport, and a z-index only ranks
+      // inside whatever stacking context that ancestor makes — both of which
+      // belong to YouTube, change between signed-in and signed-out, and change
+      // again when the page opens a sheet. Lowering ours and lifting the chain
+      // back down is right, and it was still not enough: the owner's phone
+      // showed the parked picture painted over the list the moment 소리만 was
+      // pressed (2026-09-07, "비디오숨김하면 레이아웃 개박살"), which is the
+      // same corner-window bug the unlift below was written for, wearing
+      // different coordinates.
+      //
+      // Off the left edge, nothing about the page's stacking can put it back
+      // on screen. Moved rather than hidden, because `display: none` and
+      // `visibility: hidden` are what make YouTube start making decisions
+      // about the video, and a box off-screen keeps playing sound and keeps
+      // feeding a Picture-in-Picture window, which is exactly what a desktop
+      // does while the picture is "hidden" here.
       unlift()
       vars.setProperty('--oc-z', '1')
       vars.setProperty('--oc-pe', 'none')
-      vars.setProperty('--oc-x', '0px')
+      vars.setProperty('--oc-x', `${PARKED_X}px`)
       vars.setProperty('--oc-y', '0px')
       vars.setProperty('--oc-w', '320px')
       vars.setProperty('--oc-h', '180px')
