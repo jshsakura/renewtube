@@ -38,3 +38,28 @@ test('a view animation can never leave the pane invisible', () => {
     expect(Number(opacity[1]), 'the first frame has to be readable on its own').toBeGreaterThanOrEqual(0.3)
   }
 })
+
+test('the scrolling panes carry no backdrop filter', () => {
+  // A large scrolling element with a backdrop-filter is its own compositing
+  // layer whose backdrop is re-rendered as things move behind it, and on iOS
+  // WebKit that layer can come back from a compositing change with nothing
+  // painted in it while still taking every press. This product moves YouTube's
+  // player in and out of a stage, which is that change over and over, and the
+  // owner's screen went black on exactly those presses while every element in
+  // it stayed pressable (2026-09-07, "안 보이지만 눌린다").
+  //
+  // Nothing was lost by taking it off: what is behind these two is our own flat
+  // ground, and a blur of one colour is that colour. Menus and dialogs keep
+  // theirs — they sit over content, where the blur is the point.
+  for (const pane of ['.main', '.side']) {
+    const rule = new RegExp(`\\n\\${pane} \\{([^}]*)\\}`).exec(STYLES)
+    expect(rule, `${pane} still has a rule`).not.toBeNull()
+    expect(rule![1], `${pane} must not carry a backdrop filter`).not.toMatch(/backdrop-filter/)
+  }
+  // And the shell's own surfaces are flat: no blur to ask for, and nothing
+  // translucent that would need one to look like anything.
+  expect(STYLES, 'the pane blur is off in both palettes').not.toMatch(/--pane-blur:\s*(?!none)\S/)
+  for (const decl of [...STYLES.matchAll(/--pane:\s*([^;]+);/g)]) {
+    expect(decl[1], 'a shell surface is opaque').not.toMatch(/rgba|hsla|\/\s*[\d.]+\s*\)/)
+  }
+})

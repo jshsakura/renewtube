@@ -65,6 +65,12 @@ let waitingForDiagnosis: ((text: string) => void) | null = null
 
 // The popup cannot talk to the page's world; it talks to this one, which can.
 chrome.runtime.onMessage.addListener((msg: { type?: string }, _sender, respond) => {
+  if (msg?.type === 'restart') {
+    const out: ToMain = { ns: NS, type: 'restart' }
+    window.postMessage(out, location.origin)
+    respond({ ok: true })
+    return undefined
+  }
   if (msg?.type !== 'diagnose') return undefined
   const timer = setTimeout(() => {
     if (!waitingForDiagnosis) return

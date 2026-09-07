@@ -121,8 +121,15 @@ export const STYLES = `
      reading, and text on a heavy blur is text you squint at. Over the ground
      they mostly read as depth; over content — the drawer on a phone, the
      player opened over a list — they read as glass, which is where it counts. */
-  --pane: rgba(27, 24, 21, .64);
-  --pane-blur: saturate(160%) blur(24px);
+  /* Opaque, and no blur behind it.
+     These surfaces sit on our own flat ground, so translucency showed a colour
+     against the same colour and the blur blurred one flat colour into itself:
+     both invisible, and both a compositing layer. On iOS WebKit those layers
+     came back half-painted or not at all, which is a drawer cut off in the
+     middle of a word and a list that is there and pressable and black
+     (2026-09-07). Flat paint cannot do that. */
+  --pane: #1b1815;
+  --pane-blur: none;
 
   --hover: rgba(236, 231, 223, .06);
   --shadow: 0 2px 6px rgba(20, 12, 4, .28);
@@ -197,8 +204,8 @@ export const STYLES = `
   --pop: rgba(251, 250, 246, .62);
   --pop-line: rgba(35, 32, 25, .14);
   --pop-blur: saturate(180%) blur(28px);
-  --pane: rgba(251, 250, 246, .7);
-  --pane-blur: saturate(160%) blur(16px);
+  --pane: #fbfaf6;
+  --pane-blur: none;
   --hover: rgba(0, 0, 0, .05);
   --shadow: 0 2px 6px rgba(70, 60, 40, .1);
 }
@@ -297,7 +304,9 @@ input { font: inherit; color: inherit; }
   /* One flat surface, edged with a hairline — a pane told from a box by the
      line, not by translucency. */
   background: var(--pane);
-  -webkit-backdrop-filter: var(--pane-blur); backdrop-filter: var(--pane-blur);
+  /* No backdrop filter here either, and for the reason written over .main: the
+     drawer is a tall scrolling surface over our own flat ground, so the blur
+     shows nothing and costs a compositing layer that iOS can hand back blank. */
   border: 1px solid var(--glass-line);
   border-radius: var(--radius-lg);
   padding: 16px 12px; display: flex; flex-direction: column; gap: 2px;
@@ -422,9 +431,22 @@ input { font: inherit; color: inherit; }
 /* ── Main ────────────────────────────────────────────────────────────────── */
 /* The page has margins the way a book does — text starts away from the edge,
    and the edge is where the paper is. */
+/* No backdrop filter on this one, and it is not a taste decision.
+ *
+ * A large scrolling element with a backdrop-filter is its own compositing
+ * layer whose backdrop has to be re-rendered as things move behind it — and on
+ * iOS WebKit that layer can come back from a compositing change with nothing
+ * painted in it at all, while still taking every press. That is the screen the
+ * owner kept sending: the header perfect, the whole pane black, "안 보이지만
+ * 눌린다", and pressing the picture button putting it right, because toggling
+ * the stage rebuilds the tree the layer belongs to. Moving YouTube's player in
+ * and out of a stage, which is what this product does, is that compositing
+ * change over and over.
+ *
+ * And it was buying nothing. What is behind this pane is our own flat ground:
+ * a blur of one colour is that colour. */
 .main {
   background: var(--pane);
-  -webkit-backdrop-filter: var(--pane-blur); backdrop-filter: var(--pane-blur);
   border: 1px solid var(--glass-line);
   border-radius: var(--radius-lg);
   overflow-y: auto; padding: 32px 44px 56px; min-width: 0;
@@ -1274,7 +1296,6 @@ input[type=range]::-moz-range-thumb {
   display: flex; align-items: center; gap: 9px;
   height: var(--top-all); padding: env(safe-area-inset-top) 10px 0;
   background: var(--pane);
-  -webkit-backdrop-filter: var(--pane-blur); backdrop-filter: var(--pane-blur);
   border-bottom: 1px solid var(--glass-line);
 }
 .app.narrow .drawerToggle { display: inline-flex; width: 38px; height: 38px; margin-right: -3px; }

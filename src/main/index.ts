@@ -84,6 +84,17 @@ function ask(msg: ToIsolated): void {
 window.addEventListener('message', (ev) => {
   if (ev.source !== window || !isOurs(ev.data)) return
   const msg = ev.data as ToMain
+  if (msg.type === 'restart') {
+    // Down and up again, with the mode left on: the queue is written down on
+    // the way out and read back on the way in, so the music keeps playing and
+    // the screen is built from nothing. For a screen that has gone wrong in a
+    // way we have not reproduced, this is the way out that does not cost the
+    // reader their place.
+    leave(false)
+    setQuickOn(true)
+    void start()
+    return
+  }
   if (msg.type === 'diagnose') {
     // The toolbar popup is asking. It asks because the screen may be the thing
     // that is broken, and the in-page report cannot be reached through a

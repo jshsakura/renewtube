@@ -119,6 +119,10 @@ test('화면 진단 prints the screen in words, and the text is the report', asy
     // answer this screen must never give ("뭐가 덮고있는겨", 2026-09-07).
     expect(text).toContain('덮고 있는 것:')
     expect(text).toContain('맨 위에 있는 것:')
+    // The two the hit test can never answer: what is painted over the screen
+    // without taking a press, and what threw while the screen was being drawn.
+    expect(text).toContain('화면을 채우고 있는 것')
+    expect(text).toContain('그리다 실패한 것:')
   } finally {
     await h.close()
   }

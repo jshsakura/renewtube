@@ -370,6 +370,17 @@ test('the toolbar popup can pull the diagnosis out of a page, whatever the page 
     expect(text).toMatch(/^RenewTube \d+\.\d+\.\d+/)
     expect(text).toContain('덮고 있는 것:')
     expect(text).toContain('앱의 자리')
+
+    // And the way out, from the same place: the screen is built again without
+    // the mode going off or the queue being lost. Wanted exactly when the
+    // screen itself cannot be pressed.
+    await popup.evaluate(async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
+      const tab = tabs.find((t) => /youtube\.com/.test(t.url ?? ''))
+      if (tab?.id) await chrome.tabs.sendMessage(tab.id, { type: 'restart' })
+    })
+    await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
+    await expect(h.page.locator('oc-easy-mode')).toHaveCount(1)
     await popup.close()
   } finally {
     await h.close()

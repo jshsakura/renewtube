@@ -10,6 +10,7 @@
 
 import type { Engine } from '../engine.ts'
 import { narrowNow } from './device.ts'
+import { troubles } from './trouble.ts'
 
 const OURS = new Set(['OC-EASY-MODE', 'OC-EASY-MODE-OVERLAY'])
 
@@ -268,9 +269,48 @@ export function diagnose(engine: Engine, version: string): string {
       `  ${name(el)} ${rect(el)} · 글자 ${text.length}자 "${text.slice(0, 24)}" · 그림 ${img ? (src ? `${img.naturalWidth}x${img.naturalHeight}` : '주소없음') : '없음'} · op ${cs.opacity} vis ${cs.visibility} 색 ${cs.color}`,
     )
   }
+  // Everything big and painted, whether or not a finger could reach it.
+  //
+  // The hit test cannot answer this. `elementFromPoint` skips anything with
+  // pointer-events: none, and a parked picture is click-through by design — so
+  // a thing can cover the whole screen, take no press, and leave every probe in
+  // this report answering "RenewTube". That is precisely the report that keeps
+  // arriving: "안 보이지만 눌린다". So the document is walked instead, and
+  // anything visible covering a quarter of the screen is named, ours included,
+  // with the two properties that decide whether it can be seen through or
+  // pressed through.
+  const bigOnes: string[] = []
+  const roots: Array<ParentNode> = [document]
+  if (shadow) roots.push(shadow)
+  const over = document.querySelector('oc-easy-mode-overlay')?.shadowRoot
+  if (over) roots.push(over)
+  const area = window.innerWidth * window.innerHeight
+  for (const root of roots) {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (bigOnes.length >= 8) break
+      const cs = getComputedStyle(el)
+      if (cs.visibility === 'hidden' || cs.display === 'none' || cs.opacity === '0') continue
+      const r = el.getBoundingClientRect()
+      if (r.width * r.height < area * 0.25) continue
+      if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) continue
+      const paints = cs.backgroundColor !== 'rgba(0, 0, 0, 0)' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS' || el.tagName === 'IMG'
+      if (!paints) continue
+      bigOnes.push(`  ${name(el)} ${rect(el)} · ${cs.backgroundColor} · z ${cs.zIndex} · 터치 ${cs.pointerEvents} · op ${cs.opacity} · ${cs.position}`)
+    }
+  }
+  lines.push('')
+  lines.push('화면을 채우고 있는 것 (누를 수 없는 것 포함):')
+  lines.push(...(bigOnes.length > 0 ? bigOnes : ['  없음']))
+
   lines.push('')
   lines.push('덮고 있는 것:')
   lines.push(...covers(engine))
+  const bad = troubles()
+  lines.push('')
+  lines.push('그리다 실패한 것:')
+  if (bad.length === 0) lines.push('  없음')
+  for (const t of bad.slice(0, 5)) lines.push(`  ${t.where} ×${t.count}: ${t.what.slice(0, 120)}`)
+
   lines.push('')
   lines.push('맨 위에 있는 것:')
   lines.push(...onTop())

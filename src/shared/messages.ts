@@ -28,6 +28,15 @@ export type ToMain =
    * owes the page nothing, so it always opens.
    */
   | { ns: typeof NS; type: 'diagnose' }
+  /**
+   * "Build the screen again."
+   *
+   * The escape hatch for a screen that has gone wrong in a way nobody has
+   * reproduced yet: tear the app down and put it back, keeping the mode on and
+   * the queue where it was. Pressed from the popup, because the moment it is
+   * wanted is the moment the screen cannot be pressed.
+   */
+  | { ns: typeof NS; type: 'restart' }
 
 export type ToIsolated =
   | { ns: typeof NS; type: 'get-config' }

@@ -14,6 +14,7 @@ import type { Shell } from '../shell.ts'
 import type { VideoLayout } from '../store.ts'
 import { clearStoredTheme, dislikeRemoves, foldPlaylists, playlistsFolded, setDislikeRemoves, setStoredTheme, youtubeIsDark, type Mode, type Theme, type VideoLayout as Placement } from '../store.ts'
 import { narrowNow } from './device.ts'
+import { guard } from './trouble.ts'
 import { enterPip, exitPip, pipOpen, pipSupported } from '../pip.ts'
 import { h, icon, mark, replace } from './dom.ts'
 import { STYLES } from './styles.ts'
@@ -487,6 +488,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // ── The player slot ──────────────────────────────────────────────────────
 
   function setLayout(layout: VideoLayout): void {
+    guard('화면 전환', () => setLayoutNow(layout))
+  }
+  function setLayoutNow(layout: VideoLayout): void {
     // Whether the stage was up before this call. Turning the picture on or off
     // changes how much room the list reserves at the top, and leaving the
     // scroll where it was then either buried the list under a blank band
@@ -1383,7 +1387,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // usual is not news — but the queue moving on by itself has to be explained,
   // or it reads as the app choosing its own music.
   let toldAbout: string | undefined
-  const offChange = engine.subscribe(() => {
+  const offChange = engine.subscribe(() => guard('화면 갱신', () => {
     if (engine.trouble !== undefined && engine.trouble !== toldAbout) {
       toldAbout = engine.trouble
       ctx.say(t('이 곡은 재생할 수 없어 다음 곡으로 넘어갑니다'), true)
@@ -1397,8 +1401,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     if (app.classList.contains('has-watch')) drawUpnext()
     drawBar()
     if (ctx.view.kind === 'queue') ctx.reload()
-  })
-  const offTick = engine.onTick(drawTick)
+  }))
+  const offTick = engine.onTick(() => guard('시간 갱신', drawTick))
 
   // Put the remembered choice back before the first paint, so neither the page
   // nor the app flashes the wrong side.

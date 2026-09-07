@@ -63,6 +63,20 @@ const RESCUE_STEP_MS = 2500
 const STALL_HARD_MS = 15_000
 
 /**
+ * How long an element that *has* a source may sit paused before the ladder
+ * treats it as a failure.
+ *
+ * Two different silences wear the same face. An element with nothing in it —
+ * no source, `NETWORK_EMPTY` — is the dormant player, and no amount of waiting
+ * changes it. An element that has a source and has not started is usually a
+ * phone on a slow line, and handing that to the watch page throws away a load
+ * that was arriving. Measured 2026-09-07 in WebKit: a healthy press took longer
+ * than the dormancy grace and was navigated away from, which is the product
+ * choosing its own address for no reason at all.
+ */
+const LOADED_SILENT_MS = 8000
+
+/**
  * How long a claimed advert may sit with nothing playing before it is not
  * believed.
  *
@@ -601,7 +615,14 @@ export class Engine {
     // one that played and stopped was paused by somebody, and a pause is not
     // something to recover from. A track that dies mid-way stalls rather than
     // pausing, and the clock below is what catches that.
-    if (el.paused) return !this.everPlayed
+    if (el.paused) {
+      if (this.everPlayed) return false
+      // Nothing in it at all is the dormant player, and that is what the
+      // dormancy grace is for. Something in it that has not started is a slow
+      // start until it has had a fair go.
+      const empty = el.networkState === 0 && el.currentSrc === '' && el.readyState === 0
+      return empty || Date.now() - this.loadAskedAt > LOADED_SILENT_MS
+    }
     // Something is playing, and it is fine if it is ours and moving. The
     // player's own account of which video that is cannot be trusted on its
     // own — it answers Unstarted over a playing track and empty over a dormant

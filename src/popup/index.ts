@@ -28,6 +28,11 @@ async function render(): Promise<void> {
     </div>
     <p class="hint">화면 안의 종료 버튼으로도 끌 수 있습니다.</p>
     <div class="row">
+      <span>화면 다시 그리기</span>
+      <button class="btn" id="redraw">다시 그리기</button>
+    </div>
+    <p class="hint">화면이 이상해졌을 때 누르면 재생은 그대로 두고 화면만 새로 만듭니다.</p>
+    <div class="row">
       <span>화면 진단</span>
       <button class="btn" id="diag">불러오기</button>
     </div>
@@ -61,6 +66,18 @@ async function render(): Promise<void> {
     report.hidden = false
     copy.hidden = false
   }
+  document.getElementById('redraw')!.addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    const button = document.getElementById('redraw') as HTMLButtonElement
+    if (!tab?.id) return
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'restart' })
+      button.textContent = '다시 그렸습니다'
+    } catch {
+      button.textContent = '이 탭에서는 안 됩니다'
+    }
+    setTimeout(() => (button.textContent = '다시 그리기'), 2000)
+  })
   document.getElementById('diag')!.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     if (!tab?.id || !/^https:\/\/[a-z]+\.youtube\.com\//.test(tab.url ?? '')) {
