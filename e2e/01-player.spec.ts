@@ -87,6 +87,46 @@ test('a track pressed on the home page plays where it is, and the desktop pictur
   }
 })
 
+test('a dormant player that will not start sends the track to the watch page', async () => {
+  // The signed-in dormant player — loaded, silent, ignoring every command —
+  // cannot be reproduced in the harness (Playwright runs signed out, where the
+  // player always plays). So it is simulated: the player is made to swallow
+  // loadVideoById and the element to refuse play(), exactly the dead state the
+  // owner keeps hitting, and the test asserts our rescue does what it must —
+  // hand the track to /watch, where a live player takes it. This is the
+  // regression guard for playback failing: not the failure itself, but our
+  // response to it.
+  const h = await open('https://www.youtube.com/')
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    // Neuter the player the way a dormant one behaves: it takes the id and
+    // starts nothing, and the element cannot be played.
+    await h.page.evaluate(() => {
+      const p = document.getElementById('movie_player') as (HTMLElement & { loadVideoById?: unknown; playVideo?: unknown }) | null
+      if (p) {
+        p.loadVideoById = () => {}
+        p.playVideo = () => {}
+      }
+      for (const v of Array.from(document.querySelectorAll('video'))) {
+        try { v.pause() } catch { /* */ }
+      }
+      HTMLMediaElement.prototype.play = function () {
+        try { this.pause() } catch { /* */ }
+        return Promise.reject(new DOMException('blocked', 'NotAllowedError'))
+      }
+    })
+    // Press a track. Nothing will start in place, so the rescue must navigate.
+    await ui.locator('.tile:not([aria-hidden])').first().click()
+    await ui.locator('.rows .row:not([aria-hidden])').first().locator('.meta').click()
+    await expect
+      .poll(() => new URL(h.page.url()).pathname, { timeout: 15_000 })
+      .toBe('/watch')
+  } finally {
+    await h.close()
+  }
+})
+
 test('the bar keeps every button on screen down to a 900px window', async () => {
   const h = await open(WATCH)
   try {
