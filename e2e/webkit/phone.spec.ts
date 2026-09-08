@@ -107,6 +107,22 @@ test('a track pressed on home plays here, and 영상 mode shows a picture', asyn
   await expect
     .poll(() => page.evaluate(() => getComputedStyle(document.getElementById('movie_player')!).willChange), { timeout: 10_000 })
     .toBe('transform')
+
+  // With the drawer out over a seated picture, the picture must not merely be
+  // ranked below the app — it must be off the screen, the way 소리만 leaves it.
+  // A composited video layer lowered only by z-index is the one state iOS
+  // WebKit has twice failed to paint around: the drawer came back cut off at
+  // the stage's height (photographed 2026-09-07, reported again 2026-09-08
+  // "사이드바 아래쪽이 가려 영상만큼만 보이고"). Parked means gone: no layer
+  // above the app at all while the drawer is out.
+  await ui.locator('.drawerToggle').click()
+  await expect
+    .poll(() => page.evaluate(() => Math.round(document.getElementById('movie_player')!.getBoundingClientRect().left)), { timeout: 10_000 })
+    .toBeLessThanOrEqual(-19000)
+  await ui.locator('.drawerClose').click()
+  await expect
+    .poll(() => page.evaluate(() => Math.round(document.getElementById('movie_player')!.getBoundingClientRect().left)), { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(0)
 })
 
 test('the settings sheet opens and the menu switches work here too', async ({ context, page }) => {

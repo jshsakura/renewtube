@@ -664,6 +664,10 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
   const apply = () => {
     raf = 0
     if (!target) return
+    // Nothing to track while the drawer holds the screen: the picture is
+    // parked off-screen by cover(), and re-seating it here would put its box
+    // back under the app — the exact state cover() exists to avoid.
+    if (covered) return
     if (!covered) lift()
     const want = target.getBoundingClientRect()
     if (want.width < 2 || want.height < 2) return
@@ -775,10 +779,25 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
       // the button of — and being drawn above everything, it would be the one
       // thing of the player still on screen.
       vars.setProperty('--oc-pip', 'none')
+      // And off the screen entirely, not merely ranked below the app. A
+      // composited video layer lowered only by z-index is the one state iOS
+      // WebKit has twice failed to paint around: with the drawer out over a
+      // seated picture, the drawer came back cut off at the stage's height —
+      // photographed 2026-09-07, reported again 2026-09-08 ("사이드바 아래쪽이
+      // 가려 영상만큼만 보이고"). Parked, there is no layer of the player's
+      // left anywhere over ours. cover(false) re-seats it from the slot.
+      if (target) {
+        vars.setProperty('--oc-will', 'auto')
+        vars.setProperty('--oc-x', `${PARKED_X}px`)
+        vars.setProperty('--oc-y', '0px')
+        vars.setProperty('--oc-w', '320px')
+        vars.setProperty('--oc-h', '180px')
+      }
     } else if (target) {
       vars.setProperty('--oc-z', PLAYER_Z)
       vars.setProperty('--oc-pe', 'auto')
       vars.setProperty('--oc-pip', 'grid')
+      vars.removeProperty('--oc-will')
       schedule()
     }
     // ...and nothing at all when there is nowhere for the picture to be.
