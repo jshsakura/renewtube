@@ -118,8 +118,12 @@ body > *:not(${HOST_TAG}):not(${OVERLAY_TAG}) { visibility: hidden !important; }
   /* Keep the picture on its own compositor layer while the list scrolls the
      transform under it. Without this the video layer repainted every scroll
      frame, and it read as the picture snagging on the way up (reported
-     2026-09-07, "스크롤할때 영상이 위로 걸리는데"). */
-  will-change: transform !important;
+     2026-09-07, "스크롤할때 영상이 위로 걸리는데").
+     A parked picture has no scroll to ride, so place() takes the layer back
+     (--oc-will) rather than keeping one alive off-screen — every layer the
+     compositor has to move or re-rank at park time is another way for iOS to
+     hand a neighbouring layer (ours) back unpainted. */
+  will-change: var(--oc-will, transform) !important;
 }
 /* In fullscreen the picture owns the whole screen, so none of our placement
    applies — least of all the scroll transform, which would push the fullscreen
@@ -610,18 +614,25 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
   let liftIndex = -1
 
   /**
-   * Raises the player's ancestors so the picture can paint above the app, and
-   * lowers them again without letting go.
+   * Lowers the chain without letting go of it.
    *
-   * `z` is the whole difference between the two. **The rule must not simply be
-   * deleted to get the player out of the way**: it also carries
-   * `position: relative`, and that is what keeps YouTube's own
-   * absolutely-positioned furniture — its guide drawer, its overlays —
-   * resolving against `ytd-app` instead of the page. Delete it and they escape
-   * to the initial containing block; on a phone the desktop layout is wider
-   * than the screen, the document grows with them, and the browser shrinks the
-   * whole page to fit. Measured: opening our drawer took the layout viewport
-   * from 390 to 425 and everything with it.
+   * `z` is the whole difference between up and down. **The rule must be
+   * lowered, never deleted, while the mode is running** — and that goes for
+   * the parked picture too, which is a lesson the phone taught twice:
+   *
+   * 1. Deleting it let YouTube's own absolutely-positioned furniture escape
+   *   `ytd-app` to the initial containing block; on a phone the desktop
+   *   layout is wider than the screen, the document grows with them, and the
+   *   browser shrinks the whole page to fit (measured: opening our drawer
+   *   took the layout viewport from 390 to 425 and everything with it).
+   * 2. Deleting it sent `#player-container-id` back to its own
+   *   `position: fixed; z-index: 2`, and that re-composition — a fixed
+   *   element re-basing around a composited video subtree — is where iOS
+   *   WebKit handed the app's own layer back unpainted: the owner's phone
+   *   showed nothing after 소리만 was pressed while the DOM underneath was
+   *   perfect, pressable, and fully laid out (2026-09-08, diagnosis under an
+   *   invisible screen). The drawer never had this, and the drawer lowers
+   *   rather than deletes.
    */
   const lift = (z: number | string = LIFT): void => {
     const player = document.getElementById('movie_player')
@@ -648,24 +659,6 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
       // A selector we cannot express is a player we cannot lift; the UI still
       // works, it is the picture that suffers, and that is not worth throwing.
     }
-  }
-
-  /**
-   * Puts the chain back down.
-   *
-   * Required whenever the picture has nowhere to be: parking the player relies
-   * on the app being above it, and a lifted chain is exactly what stops that.
-   * Without this, 소리만 듣기 leaves a small video in the top-left corner.
-   */
-  const unlift = (): void => {
-    if (liftIndex < 0 || !style.sheet) return
-    try {
-      style.sheet.deleteRule(liftIndex)
-    } catch {
-      /* the sheet is going away anyway */
-    }
-    liftIndex = -1
-    liftText = ''
   }
 
   const apply = () => {
@@ -723,30 +716,26 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
     // A button for a picture nobody can see is a button for nothing.
     vars.setProperty('--oc-pip', next ? 'grid' : 'none')
     if (!next) {
-      // Nowhere to be: parked off the side of the screen, still playing, and
-      // this time not merely *behind* anything.
+      // Nowhere to be: parked off the side of the screen, still playing.
       //
       // Behind was a bet, and the bet is not ours to win. `position: fixed`
       // resolves against the nearest ancestor with a transform, a filter or
       // containment rather than against the viewport, and a z-index only ranks
       // inside whatever stacking context that ancestor makes — both of which
       // belong to YouTube, change between signed-in and signed-out, and change
-      // again when the page opens a sheet. Lowering ours and lifting the chain
-      // back down is right, and it was still not enough: the owner's phone
-      // showed the parked picture painted over the list the moment 소리만 was
-      // pressed (2026-09-07, "비디오숨김하면 레이아웃 개박살"), which is the
-      // same corner-window bug the unlift below was written for, wearing
-      // different coordinates.
+      // again when the page opens a sheet. Off the left edge (see lift() for
+      // why the chain is lowered rather than deleted on the way there),
+      // nothing about the page's stacking can put it back on screen.
       //
-      // Off the left edge, nothing about the page's stacking can put it back
-      // on screen. Moved rather than hidden, because `display: none` and
+      // Moved rather than hidden, because `display: none` and
       // `visibility: hidden` are what make YouTube start making decisions
       // about the video, and a box off-screen keeps playing sound and keeps
       // feeding a Picture-in-Picture window, which is exactly what a desktop
       // does while the picture is "hidden" here.
-      unlift()
+      lift(0)
       vars.setProperty('--oc-z', '1')
       vars.setProperty('--oc-pe', 'none')
+      vars.setProperty('--oc-will', 'auto')
       vars.setProperty('--oc-x', `${PARKED_X}px`)
       vars.setProperty('--oc-y', '0px')
       vars.setProperty('--oc-w', '320px')
@@ -759,6 +748,8 @@ export function mount(onExit: (reason: 'panic' | 'watchdog') => void): Shell {
       // a drawer opened while the picture was away left the player deaf: it
       // returned to the screen and no tap on it did anything at all.
       vars.setProperty('--oc-pe', 'auto')
+      // Back on the stage, back on its own layer for the scroll to ride.
+      vars.removeProperty('--oc-will')
     }
     observer.observe(next)
     schedule()

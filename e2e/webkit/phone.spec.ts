@@ -84,6 +84,29 @@ test('a track pressed on home plays here, and 영상 mode shows a picture', asyn
     .poll(() => page.evaluate(() => Math.round(document.getElementById('movie_player')!.getBoundingClientRect().right)), { timeout: 10_000 })
     .toBeLessThanOrEqual(0)
   expect(await page.evaluate(() => { const v = document.querySelector('video')!; return !v.paused })).toBe(true)
+
+  // The parked state must be the one compositing state the phone is known to
+  // paint: the chain LOWERED (as cover() lowers it for the drawer), never
+  // removed. Deleting the rule lets #player-container-id go back to its own
+  // `position: fixed; z-index: 2`, and that re-composition is where iOS
+  // handed the app's layer back unpainted (2026-09-08, "안보이지만 버튼은
+  // 눌린다" — the diagnosis saw a perfect DOM under an unpainted screen).
+  // And a parked picture has no scroll to ride, so it gives the composited
+  // layer (will-change) back rather than keeping one alive off-screen.
+  const parkedCompositing = await page.evaluate(() => {
+    const chain = document.getElementById('player-container-id')
+    const player = document.getElementById('movie_player')
+    return chain && player
+      ? { position: getComputedStyle(chain).position, z: getComputedStyle(chain).zIndex, will: getComputedStyle(player).willChange }
+      : null
+  })
+  expect(parkedCompositing).toEqual({ position: 'relative', z: '0', will: 'auto' })
+  // ...and the layer is taken back the moment the picture has a seat again.
+  await ui.locator('.bar .vid').click()
+  await expect(ui.locator('.slot')).toHaveClass(/stage/)
+  await expect
+    .poll(() => page.evaluate(() => getComputedStyle(document.getElementById('movie_player')!).willChange), { timeout: 10_000 })
+    .toBe('transform')
 })
 
 test('the settings sheet opens and the menu switches work here too', async ({ context, page }) => {
