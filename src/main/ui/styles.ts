@@ -756,6 +756,7 @@ input { font: inherit; color: inherit; }
 .card .s, .tile .s { margin-top: 2px; padding: 0 10px 10px; color: var(--muted-foreground); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 
+.shelves { display: block; position: relative; width: 100%; }
 .shelf { margin-bottom: 36px; position: relative; }
 .shelf h3 { margin: 0 0 14px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
 /* A shelf runs edge to edge. It used to stop at the pane's padding and fade
@@ -768,6 +769,7 @@ input { font: inherit; color: inherit; }
   margin: 0 -44px;
   scroll-snap-type: x proximity; scroll-padding-left: 44px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
 .shelfRow::-webkit-scrollbar { height: 0; }
 /* A mouse can drag the row (drag.ts). The hand says so, and while it holds
@@ -833,7 +835,7 @@ input { font: inherit; color: inherit; }
    other waiting thing here; it goes back to black the moment the picture can
    letterbox against it. */
 .slot.warming { background: var(--muted); animation: sk 1.2s ease-in-out infinite; }
-.slot.hidden { display: none; }
+.slot.hidden { display: none !important; width: 0 !important; height: 0 !important; pointer-events: none !important; visibility: hidden !important; }
 .slot.corner {
   left: calc(100dvw - 280px - var(--gap)); bottom: calc(var(--bar) + var(--gap)); width: 280px;
   aspect-ratio: 16/9; box-shadow: var(--shadow);
@@ -1312,6 +1314,7 @@ input[type=range]::-moz-range-thumb {
   border: 0; border-radius: 0;
   padding: 20px 16px 24px;
 }
+.app.narrow .main > * { transform: none; }
 /* Only the screen's own title, which the header now carries. A playlist's
    heading lives inside .head and is content, not a screen name. */
 .app.narrow .main > h2, .app.narrow .head h2 { display: none; }
@@ -1358,6 +1361,7 @@ input[type=range]::-moz-range-thumb {
   margin-left: -16px; margin-right: -16px;
   padding-left: 16px; padding-right: 16px;
   scroll-padding-left: 16px;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Sized like the app, and for the same reason: inset: 0 measures a box that
@@ -1788,6 +1792,7 @@ input[type=range]::-moz-range-thumb {
   transition: opacity .6s ease;
 }
 .app.light::before { opacity: .3; }
+.app.narrow::before { display: none; }
 @media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
 /* ── Dragging a row ───────────────────────────────────────────────────────
    Kept at the end of the file, with the other late blocks, so two branches

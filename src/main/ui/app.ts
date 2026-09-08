@@ -513,6 +513,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     seatSlot()
     const stageNow = app.classList.contains('has-stage') || app.classList.contains('has-watch')
     if (stageNow !== stageWas) main.scrollTop = 0
+    // Force a layout reflow on main so WebKit immediately recalculates layers and repaints
+    void main.offsetHeight
     // Re-measure after the slot has taken its new size, so the scroll handler
     // never has to touch layout itself.
     requestAnimationFrame(measureStage)
