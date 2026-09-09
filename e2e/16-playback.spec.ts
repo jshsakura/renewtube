@@ -186,6 +186,69 @@ test('the end of a track is the start of the next one', async ({ page }) => {
   await expectSound(page, 10_000)
 })
 
+test('a video YouTube autoplays outside the queue is rejected', async ({ page }) => {
+  // The phone showed one title in the bar and another video in the picture
+  // (2026-09-09, "화면에보이는 영상하고 하단 재생기의 영상이 다른시점").
+  // That is not a stalled clock: the wrong video is healthy and moving, which
+  // is why accepting movement alone left the split state there for ever.
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page, 2)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { autoplay(id: string): void } }).LAB.autoplay('outside'))
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 8000 }).toBe('v1')
+  const v = await view(page)
+  expect(v.playingTitle).toBe('track 1')
+  expect(v.index).toBe(0)
+  await expectSound(page, 5000)
+})
+
+test('an unrequested autoplay is stopped without inventing a current track', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await page.evaluate(() => (window as unknown as { LAB: { autoplay(id: string): void } }).LAB.autoplay('outside'))
+  // Past the foreign-video grace: checking at time zero would pass merely
+  // because the fake video's first clock tick had not happened yet.
+  await page.waitForTimeout(3500)
+  expect(await page.evaluate(() => document.querySelector('video')?.paused)).toBe(true)
+  const v = await view(page)
+  expect(v.sounding).toBe(false)
+  expect(v.playingTitle).toBe('')
+  expect(v.index).toBe(-1)
+})
+
+test('a swallowed next load cannot leave the previous video playing under the next title', async ({ page }) => {
+  // The other observed ending, 2026-09-09: "하나 재생후 다음꺼 재생안되고
+  // 멈추는". The fake player accepts and plays v1, then ignores every request
+  // for v2 while v1 keeps moving. The bounded ladder must get v2 onto a healthy
+  // watch player rather than calling v1's clock success.
+  await lab(page, { fault: 'keeps-previous', watch: 'healthy' })
+  await playQueue(page, 3)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { next(): void } }).LAB.next())
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 12_000 }).toBe('v2')
+  const v = await view(page)
+  expect(v.playingTitle).toBe('track 2')
+  expect(v.index).toBe(1)
+  await expectSound(page, 5000)
+})
+
+test('a stored queue never claims its old track over an empty player', async ({ page }) => {
+  // localStorage remembers the queue, not a fact about a media element that
+  // died with the last document. With no watch id and no player id, the cursor
+  // is stale and the bar must start empty; the rows remain available to press.
+  await page.addInitScript(() => {
+    localStorage.setItem('oc-easy-mode:state', JSON.stringify({
+      queue: [{ videoId: 'stale', title: 'stale track', byline: 'lab', duration: '0:30', unavailable: false }],
+      index: 0,
+      video: 'stage',
+    }))
+  })
+  await lab(page, { fault: 'healthy' })
+  const v = await view(page)
+  expect(v.playingTitle).toBe('')
+  expect(v.index).toBe(-1)
+  expect(v.queue.map((track) => track.id)).toEqual(['stale'])
+})
+
 test('a dead track in the middle of a queue does not stop the ones after it', async ({ page }) => {
   // The whole point of the ladder, said in one run: press the first track,
   // walk away, and the queue is still playing when you come back.

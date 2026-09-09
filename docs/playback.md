@@ -20,11 +20,17 @@
 (`dont-trust-the-youtube-player-api`), 광고가 없는데 `ad-showing` 이 붙어 있고,
 곡을 받아 놓고 아무것도 안 받아오면서 오류도 안 낸다. 그래서 판단의 근거는 하나뿐이다.
 
-> **`<video>` 의 시계가 움직이는가.**
+> **`<video>` 의 시계가 움직이며, 플레이어가 현재 큐의 영상 ID를 말하는가.**
 
 `engine.progressAt` 이 그 시계가 마지막으로 움직인 시각이다. "재생 중"의 정의가
 `paused === false` 가 아닌 이유는, **버퍼링 중인 요소도 `paused` 가 false** 이기 때문이다.
 멈춘 채 영원히 기다리는 것과 소리가 나는 것을 그 값으로는 못 가른다.
+
+ID도 단독으로는 믿지 않지만, 현재 큐와 **다른 비어 있지 않은 ID**는 반대 방향의
+확실한 증거다. YouTube 자동 다음 재생이 이전/추천 영상을 건강하게 돌리는 동안 하단
+바만 다음 곡을 가리키면 시계는 계속 움직인다. 그래서 다른 ID의 시계는 진행으로 세지
+않고, 2초의 전환 유예 뒤 현재 곡을 다시 넣는다. 그것도 삼키면 사다리를 탄다. 재생
+의도 자체가 없으면 자동 영상을 멈추고 저장된 큐는 보존하되 현재 커서만 비운다.
 
 ## 사다리
 
@@ -77,12 +83,12 @@
 
 ## 어디서 검증하나
 
-`e2e/16-playback.spec.ts` 26개(고장 6종은 한 표에서 돈다). **실제 유튜브를 쓰지 않는다.** 로그인 상태의 고장은
+`e2e/16-playback.spec.ts` 30개(고장 6종은 한 표에서 돈다). **실제 유튜브를 쓰지 않는다.** 로그인 상태의 고장은
 하네스에서 재현되지 않기 때문이다(로그아웃 재생기는 늘 잘 논다). 대신
 `e2e/lab/` 이 **일부러 고장 나는 재생기**를 만든다.
 
 ```
-e2e/lab/entry.ts     고장 13종을 이름으로 켜는 가짜 재생기 + 진짜 Engine
+e2e/lab/entry.ts     고장 14종을 이름으로 켜는 가짜 재생기 + 진짜 Engine
 e2e/lab/fixture.ts   page.route 로 youtube.com 을 통째로 대신 응답
 npm run test:lab     빌드 + 이 스펙만
 ```
@@ -92,8 +98,9 @@ npm run test:lab     빌드 + 이 스펙만
 "한 단계의 동작"이 아니라 **페이지를 넘나드는 복구 전체**다. 네트워크를 쓰지 않아
 2분 30초에 끝나고 흔들리지 않는다.
 
-고장 13종: `healthy` `dormant` `loaded-paused` `play-rejects` `stuck-unstarted`
-`ad-phantom` `ad-real` `error` `throws` `slow` `stall` `swap` `no-player`.
+고장 14종: `healthy` `dormant` `loaded-paused` `play-rejects` `stuck-unstarted`
+`ad-phantom` `ad-real` `error` `throws` `slow` `stall` `swap` `keeps-previous`
+`no-player`.
 `dead: ['v1']` 로 **특정 곡만** 고장 내면 포기와 다음 곡까지 한 판에서 본다.
 
 ## 고칠 때 조심할 것

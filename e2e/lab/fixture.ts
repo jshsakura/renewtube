@@ -25,6 +25,7 @@ export type Fault =
   | 'slow'
   | 'stall'
   | 'swap'
+  | 'keeps-previous'
   | 'no-player'
 
 export interface LabConfig {
@@ -37,6 +38,7 @@ export interface LabConfig {
 export interface LabView {
   path: string
   videoId: string | undefined
+  playerVideoId: string | undefined
   sounding: boolean
   currentTime: number
   playingTitle: string

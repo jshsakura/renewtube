@@ -88,6 +88,15 @@ const LOADED_SILENT_MS = 8000
  */
 const AD_PAUSED_MS = 6000
 
+/**
+ * How long the player may name a different video during an ordinary load.
+ *
+ * `loadVideoById` changes the API's answer asynchronously, so the outgoing id
+ * is expected for a beat. Past this grace it is not a transition: YouTube's
+ * autonav or inline player has taken the element back from our queue.
+ */
+const FOREIGN_VIDEO_MS = 2000
+
 export type Listener = () => void
 
 /**
@@ -174,6 +183,10 @@ export class Engine {
   private progressAt = 0
   /** Where the clock was at that moment. */
   private progressTime = -1
+  /** When YouTube first named a video other than the one our bar names. */
+  private foreignSince: number | undefined
+  /** One cheap reclaim per load before the recovery ladder spends a rung. */
+  private foreignPushFor = -1
   /**
    * This load has been heard at least once.
    *
@@ -231,6 +244,21 @@ export class Engine {
    * where the answer is no. `undefined` means not measured yet.
    */
   volumeSettable: boolean | undefined
+
+  constructor() {
+    // A stored queue is useful after a reload; a stored *playing index* is not
+    // proof that anything is still playing. On a non-watch page there is no
+    // URL naming the old track, so drawing it in the bar until some unrelated
+    // inline video wakes up is how localStorage and the picture end up telling
+    // two different stories. Keep the queue, clear only its stale cursor. An
+    // attached player with a real id is adopted below, and our own recovery
+    // arrival has that id in the watch URL as well.
+    if (this.current !== undefined && videoIdInUrl() === undefined) {
+      this.state.index = -1
+      this.state.video = 'hidden'
+      save(this.state)
+    }
+  }
 
   /** Subscribe to queue and settings changes. Returns the unsubscribe. */
   subscribe(fn: Listener): () => void {
@@ -384,6 +412,10 @@ export class Engine {
     if (this.adShowing()) return
     const playing = videoIdInUrl() ?? p.getVideoData()?.video_id
     if (!playing) return
+    // From this point the player, not persisted state, is the identity of the
+    // current media. Future autoplay is compared with this value even when no
+    // load of ours is in flight.
+    this.loadedId = playing
     if (this.current?.videoId === playing) return
     const at = this.state.queue.findIndex((t) => t.videoId === playing)
     if (at >= 0) {
@@ -623,16 +655,18 @@ export class Engine {
       const empty = el.networkState === 0 && el.currentSrc === '' && el.readyState === 0
       return empty || Date.now() - this.loadAskedAt > LOADED_SILENT_MS
     }
-    // Something is playing, and it is fine if it is ours and moving. The
-    // player's own account of which video that is cannot be trusted on its
-    // own — it answers Unstarted over a playing track and empty over a dormant
-    // one — so the element's clock is what decides, and the id only says whose
-    // clock it is. A track still loading while the last one plays on is the
-    // press that produced nothing, and it reads exactly like this.
+    // Something is playing, and it is fine only if it is ours and moving. The
+    // player's id cannot prove playback on its own — it answers Unstarted over
+    // a playing track and empty over a dormant one — but a *different* nonempty
+    // id proves the moving clock belongs to somebody else. This used to count
+    // only while `loading` was set. Once that flag cleared, an automatic video
+    // could run for ever while the bar named the next queue item (2026-09-09,
+    // "화면에보이는 영상하고 하단 재생기의 영상이 다른시점").
     const named = this.namedVideo()
-    const somebodyElse = !!named && named !== id && this.loading !== undefined
+    const somebodyElse = !!named && named !== id
+    if (somebodyElse) return Date.now() - (this.foreignSince ?? this.loadAskedAt) > FOREIGN_VIDEO_MS
     const moving = Date.now() - this.progressAt < STALL_HARD_MS
-    if (!somebodyElse && moving) return false
+    if (moving) return false
     return Date.now() - this.loadAskedAt > STALL_HARD_MS
   }
 
@@ -721,8 +755,8 @@ export class Engine {
     return el.readyState >= 2 || el.currentSrc !== ''
   }
 
-  /** Hands the player the track again, from the top, without counting it as a new load. */
-  private repush(id: string): void {
+  /** Hands the player the track again without counting it as a new load. */
+  private repush(id: string, startSeconds?: number): void {
     const p = this.player
     if (!p) return
     this.loading = id
@@ -734,7 +768,7 @@ export class Engine {
     this.wantsPlaying = true
     this.wantsSound = true
     try {
-      p.loadVideoById(id)
+      p.loadVideoById(startSeconds !== undefined && startSeconds > 0 ? { videoId: id, startSeconds } : id)
       p.playVideo()
     } catch {
       // A player that throws is one the next rung navigates away from.
@@ -874,6 +908,10 @@ export class Engine {
   private tick = (): void => {
     const p = this.player
     if (!p) return
+    // YouTube rebuilds and re-enables this control as videos change. Turning it
+    // off only at attach left its automatic next free to race our queue after
+    // the first track, so keep the page's queue out on every existing tick.
+    disableAutonav()
     this.watchElement()
     this.probeVolume()
     if (this.holding && this.sounding()) this.putDown()
@@ -891,9 +929,21 @@ export class Engine {
     // there was no way to stop what was audibly playing. Whatever is coming
     // out of the speakers, the load we asked for has happened.
     const ad = this.adShowing()
+    if (ad) this.adSeenAt = Date.now()
+    const settledAfterAd = Date.now() - this.adSeenAt > AD_SETTLE_MS
+    const named = this.namedVideo()
+    const expected = this.loadedId ?? this.current?.videoId
+    const unsolicited = !!named && expected === undefined && !this.wantsSound && this.sounding()
+    const foreign = !ad && settledAfterAd && (unsolicited || (!!named && !!expected && named !== expected))
+    if (foreign) this.foreignSince ??= Date.now()
+    else {
+      this.foreignSince = undefined
+      // A later takeover is a new episode and earns its own cheap correction.
+      this.foreignPushFor = -1
+    }
     if (
       this.loading !== undefined &&
-      (ad || ((s === State.Playing || s === State.Buffering) && p.getVideoData()?.video_id === this.loading))
+      (ad || ((s === State.Playing || s === State.Buffering) && named === this.loading))
     ) {
       this.loading = undefined
       // Whoever pressed pause while this was loading meant it.
@@ -945,7 +995,7 @@ export class Engine {
       this.repushedFor !== `${this.loadSeq}:${this.state.rate}` &&
       Date.now() - this.loadAskedAt > STUCK_UNSTARTED_MS &&
       this.sounding() &&
-      p.getVideoData()?.video_id === this.loadedId
+      named === this.loadedId
     ) {
       this.repushedFor = `${this.loadSeq}:${this.state.rate}`
       // Put the pending flag back, so the landing path above does the rest:
@@ -964,19 +1014,58 @@ export class Engine {
     // The clock, watched here and nowhere else. Every judgement about whether a
     // track is playing comes back to whether this number moves.
     const clock = this.videoEl()?.currentTime ?? -1
-    if (clock !== this.progressTime) {
+    if (!foreign && clock !== this.progressTime) {
       if (this.progressTime >= 0 && clock > 0 && this.loading === undefined) this.everPlayed = true
       this.progressTime = clock
       this.progressAt = Date.now()
     }
+    const ownSound = this.sounding() && !foreign
     // Landed sound only: while a load is still pending, whatever is coming out
     // of the element belongs to the track before it.
-    if (this.wantsPlaying && this.loading === undefined && this.sounding()) this.wantsPlaying = false
+    if (this.wantsPlaying && this.loading === undefined && ownSound) this.wantsPlaying = false
     if (this.wantsPlaying) this.tryStart()
+
+    // Reject YouTube's queue before calling the current track a failure. A
+    // short mismatch is loadVideoById changing hands; a persistent one is an
+    // automatic/inline video using the same element. Near the real end, let
+    // our queue advance. Anywhere else, put our id back at the last position
+    // it had. If that cheap correction is swallowed, needsRescue() spends the
+    // ordinary bounded ladder next.
+    if (foreign && this.foreignSince !== undefined && Date.now() - this.foreignSince > FOREIGN_VIDEO_MS) {
+      if (!this.wantsSound) {
+        // No current playback was requested, so there is nothing sensible to
+        // recover. Stop YouTube's automatic video and discard only the stale
+        // cursor; the queue itself remains available for the next deliberate
+        // press. Clear our expectation before pauseVideo emits synchronously.
+        this.loading = undefined
+        this.loadedId = undefined
+        this.wantsPlaying = false
+        this.wantPaused = false
+        this.foreignSince = undefined
+        this.state.index = -1
+        this.state.video = 'hidden'
+        if (this.sounding()) p.pauseVideo()
+        this.changed()
+        return
+      } else if (
+        this.loading === undefined &&
+        this.position.duration > 0 &&
+        this.position.current >= this.position.duration - 1.5 &&
+        this.current?.videoId === expected
+      ) {
+        this.endedFor = expected
+        this.ended()
+        return
+      } else if (this.foreignPushFor !== this.loadSeq) {
+        this.foreignPushFor = this.loadSeq
+        this.repush(expected!, this.loading === undefined ? this.position.current : undefined)
+        return
+      }
+    }
     // Sound is the only proof, and it wipes the slate: the ladder starts from
     // the top for whatever goes wrong next, rather than carrying yesterday's
     // spent rungs into it.
-    if (this.sounding() && this.loading === undefined && !ad) {
+    if (ownSound && this.loading === undefined && !ad) {
       this.wasSounding = true
       if (this.rescue.nav || this.rescue.push || this.rescue.reload) {
         this.rescue = { id: this.loadedId ?? '' }
@@ -984,7 +1073,7 @@ export class Engine {
       }
       if (this.trouble !== undefined) this.trouble = undefined
       this.needsGesture = false
-    } else if (!this.sounding()) {
+    } else if (!ownSound) {
       this.wasSounding = false
     }
     if (this.needsRescue()) this.recover()
@@ -1020,7 +1109,7 @@ export class Engine {
         // No getter, no way to tell it drifted; the load-landed call stands.
       }
     }
-    const pending = this.loading !== undefined && s !== State.Playing && s !== State.Paused
+    const pending = (this.loading !== undefined && s !== State.Playing && s !== State.Paused) || foreign
     // Checked here rather than on a timer of its own: this already runs twice a
     // second, and a sleep timer is not a thing that needs to be punctual to the
     // millisecond.
@@ -1049,9 +1138,7 @@ export class Engine {
     // And the player must agree it is still our track. When it names a video
     // at all, and that name is not the one we think is playing, the element's
     // `ended` belongs to something else.
-    if (ad) this.adSeenAt = Date.now()
-    const settled = Date.now() - this.adSeenAt > AD_SETTLE_MS
-    const named = p.getVideoData()?.video_id
+    const settled = settledAfterAd
     const ours = !named || named === playingId
     if (
       !ad &&
@@ -1078,12 +1165,12 @@ export class Engine {
     // while one is running belongs to the advert, so the elapsed time and the
     // length are held where the track left them and the bar stops lying about
     // a song it is not playing.
-    const current = ad ? this.position.current : p.getCurrentTime() || 0
-    const duration = ad ? this.position.duration : p.getDuration() || 0
+    const current = ad || foreign ? this.position.current : p.getCurrentTime() || 0
+    const duration = ad || foreign ? this.position.duration : p.getDuration() || 0
     this.position = {
       current,
       duration,
-      playing: this.sounding(),
+      playing: ownSound,
       buffering,
       stalled,
     }
@@ -1400,6 +1487,8 @@ export class Engine {
     remember(track)
     this.progressAt = Date.now()
     this.progressTime = -1
+    this.foreignSince = undefined
+    this.foreignPushFor = -1
     this.everPlayed = false
     this.wantsSound = true
     if (this.player) {
@@ -1446,6 +1535,14 @@ export class Engine {
       this.wantsPlaying = false
       this.wantsSound = false
     } else {
+      const named = this.namedVideo()
+      const expected = this.current?.videoId
+      // A play press over a foreign paused frame must load the bar's track;
+      // playVideo() alone would resume the automatic video we just rejected.
+      if (named && expected && named !== expected) {
+        this.load()
+        return
+      }
       this.wantPaused = false
       this.wantsPlaying = true
       this.wantsSound = true

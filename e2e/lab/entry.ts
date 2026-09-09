@@ -42,6 +42,8 @@ export type Fault =
   | 'stall'
   /** The page rebuilds its player a second after the track is handed over. */
   | 'swap'
+  /** Keeps the first video running and swallows every later load. */
+  | 'keeps-previous'
   /** No player in the page at all: the case that has to navigate to find one. */
   | 'no-player'
 
@@ -303,6 +305,11 @@ function build(): Fake {
       const fault = faultFor(id)
       log('loadVideoById', id)
       if (fault === 'throws') throw new Error('lab: the player refuses')
+      // The transition that strands the real phone: the bar has advanced to
+      // the next queue item, but YouTube ignores that load and leaves the old
+      // video and its moving clock in the element. A clock alone therefore
+      // cannot be accepted as proof that the requested track is playing.
+      if (fault === 'keeps-previous' && loaded !== undefined) return
       loaded = id
       s.error = null
       s.ended = false
@@ -471,6 +478,8 @@ export interface LabView {
   path: string
   /** The video the address names, when it names one. */
   videoId: string | undefined
+  /** The video YouTube's player actually names. */
+  playerVideoId: string | undefined
   /** Sound is coming out of the element. The only proof that counts. */
   sounding: boolean
   currentTime: number
@@ -500,6 +509,12 @@ const lab = {
   next() {
     engine.next()
   },
+  /** Lets YouTube's own queue take the player without telling our engine. */
+  autoplay(id: string) {
+    const p = document.getElementById('movie_player') as YtPlayer | null
+    p?.loadVideoById(id)
+    p?.playVideo()
+  },
   /** Presses a different row while the last press is still in the air. */
   jumpTo(index: number) {
     engine.jumpTo(index)
@@ -528,6 +543,7 @@ const lab = {
     return {
       path: location.pathname,
       videoId: new URLSearchParams(location.search).get('v') ?? undefined,
+      playerVideoId: engine.player?.getVideoData()?.video_id || undefined,
       // Not merely "not paused": a waiting element is not paused either, and
       // taking that for sound is how a stall reads as success.
       sounding: !!v && !v.paused && !v.ended && v.currentTime > 0.15,
