@@ -220,6 +220,8 @@ test('it runs on m.youtube.com and lays itself out narrow', async () => {
     expect(Math.abs(sleepMenuBox.x + sleepMenuBox.width - (sleepBox.x + sleepBox.width))).toBeLessThanOrEqual(24)
     expect(sleepBox.y - (sleepMenuBox.y + sleepMenuBox.height)).toBeGreaterThanOrEqual(0)
     expect(sleepBox.y - (sleepMenuBox.y + sleepMenuBox.height)).toBeLessThanOrEqual(12)
+    expect(sleepMenuBox.width).toBeLessThanOrEqual(240)
+    expect(await sleepMenu.evaluate((el) => getComputedStyle(el).backdropFilter)).toContain('blur')
     await expect(sleepMenu.locator('.menuTitle')).toHaveText('수면 예약')
     await sleepMenu.locator('.menuClose').click()
 
@@ -266,10 +268,24 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
         webkitSupportsPresentationMode(mode: string): boolean
         webkitSetPresentationMode(mode: string): void
       }
+      let paused = false
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
+      video.play = () => {
+        paused = false
+        video.dataset.pipRestoreCalls = String(Number(video.dataset.pipRestoreCalls ?? '0') + 1)
+        return Promise.resolve()
+      }
+      video.pause = () => {
+        paused = true
+      }
       Object.defineProperty(video, 'webkitPresentationMode', { configurable: true, writable: true, value: 'inline' })
       video.webkitSupportsPresentationMode = (mode) => mode === 'picture-in-picture'
       video.webkitSetPresentationMode = (mode) => {
         video.webkitPresentationMode = mode
+        // The order seen on iPhone: leaving PiP pauses the element as part of
+        // the presentation change. The second PiP press asked only to close
+        // the window, so the product has to preserve the playing state.
+        if (mode === 'inline') video.pause()
         video.dispatchEvent(new Event('webkitpresentationmodechanged'))
       }
       video.setAttribute('disablePictureInPicture', '')
@@ -282,9 +298,16 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
     await expect(button).toHaveClass(/on/)
     expect(await page.locator('video').getAttribute('disablePictureInPicture')).toBeNull()
 
-    await button.click()
+    const restoresBeforeExit = await page.evaluate(() => {
+      const video = document.querySelector('video')!
+      void video.play()
+      const before = Number(video.dataset.pipRestoreCalls ?? '0')
+      ;(document.querySelector('oc-easy-mode')!.shadowRoot!.querySelector('.bar .pip') as HTMLButtonElement).click()
+      return before
+    })
     await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('inline')
     await expect(button).not.toHaveClass(/on/)
+    await expect.poll(() => page.evaluate(() => Number(document.querySelector('video')!.dataset.pipRestoreCalls ?? '0'))).toBeGreaterThan(restoresBeforeExit)
   } finally {
     await context.close()
   }
@@ -483,6 +506,10 @@ test('the player bar opens into a full player and closes again', async () => {
     expect(Math.abs(detailedStage.width - ordinaryStage.width)).toBeLessThanOrEqual(1)
     expect(Math.abs(detailedStage.height - ordinaryStage.height)).toBeLessThanOrEqual(1)
     expect(Math.abs(detailedStage.x - ordinaryStage.x)).toBeLessThanOrEqual(1)
+    // The live player owns its black letterbox. Keeping another black slot
+    // under it exposed a short rectangle above and below the video whenever
+    // iOS painted their widths differently (reported 2026-09-10).
+    await expect(slot).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
     await ui.locator('.sheetClose').click()
     await expect(ui.locator('.ctl .sh')).toBeHidden()

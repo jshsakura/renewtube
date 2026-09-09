@@ -57,8 +57,11 @@ test('a view animation can never leave the pane invisible', () => {
   }
 })
 
-test('nothing in the stylesheet blurs what is behind it', () => {
-  // One rule with no exceptions, because the exceptions were the bug.
+test('only a transient menu may blur what is behind it', () => {
+  // One small, short-lived exception. The phone menu was transparent without
+  // doing anything to what showed through it, so the transport and seek line
+  // cut straight through every label (measured 2026-09-10: "투명하게 블러라도
+  // 넣던가"). It is not an app surface and disappears after one selection.
   //
   // A backdrop-filter makes its element a compositing layer whose backdrop is
   // re-rendered as things move behind it, and on iOS WebKit that layer can come
@@ -72,9 +75,18 @@ test('nothing in the stylesheet blurs what is behind it', () => {
   // each blur was one colour seen through the same colour. The first fix took
   // it off the two scrolling panes and left it on the drawer, which is the
   // phone's own rule and the one in the photograph — so now there are no
-  // exceptions to keep track of.
+  // surface exceptions to keep track of. The transient menu above is the
+  // complete whitelist and this test names both of its declarations.
   const code = STYLES.replace(/\/\*[\s\S]*?\*\//g, '')
-  expect(code, 'no element may blur its backdrop').not.toMatch(/backdrop-filter\s*:/)
+  const backdrop = cssRules(STYLES).flatMap(({ selector, declarations }) =>
+    declarations
+      .filter(({ property }) => property === 'backdrop-filter' || property === '-webkit-backdrop-filter')
+      .map(({ property, value }) => ({ selector, property, value })),
+  )
+  expect(backdrop).toEqual([
+    { selector: '.menu', property: '-webkit-backdrop-filter', value: 'blur(18px) saturate(140%)' },
+    { selector: '.menu', property: 'backdrop-filter', value: 'blur(18px) saturate(140%)' },
+  ])
   expect(code, 'and no blur is left to ask for').not.toMatch(/--(pane|pop)-blur:\s*(?!none)\S/)
   // The shell's own surfaces are opaque as well: a colour against the same
   // colour is not translucency, it is a layer for nothing.
@@ -133,6 +145,7 @@ test('the opened phone player keeps the ordinary stage size', () => {
   const declarations = Object.fromEntries(rule!.declarations.map(({ property, value }) => [property, value]))
   expect(declarations.width).toBe('100dvw')
   expect(declarations.height).toBe('var(--stage-h)')
+  expect(declarations.background).toBe('transparent')
   expect(declarations['border-radius']).toBe('0')
   expect(declarations['box-shadow']).toBe('none')
 })

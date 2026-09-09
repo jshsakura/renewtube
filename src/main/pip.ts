@@ -102,17 +102,35 @@ export async function enterPip(onLeave: () => void): Promise<boolean> {
 /** Closes the window if it is open. */
 export async function exitPip(): Promise<void> {
   const el = video()
+  // iPhone WebKit may pause the media element while changing its presentation
+  // back to inline. Closing a window is not a pause command: remember whether
+  // it was sounding before the change and restore only that case. Measured
+  // 2026-09-10: pressing the PiP button a second time returned the video
+  // "중지된채로 백그라운드에".
+  const keepPlaying = !!el && !el.paused && !el.ended
+  const restore = () => {
+    if (!keepPlaying || !el || !el.paused || el.ended) return
+    void el.play().catch(() => {})
+  }
   if (el?.webkitPresentationMode === 'picture-in-picture' && el.webkitSetPresentationMode) {
+    el.addEventListener('webkitpresentationmodechanged', restore, { once: true })
     try {
       el.webkitSetPresentationMode('inline')
+      // Some WebKit builds dispatch the presentation event before applying
+      // their pause. The immediate call keeps the gesture; the next task sees
+      // the final state and catches that ordering too.
+      restore()
+      window.setTimeout(restore, 0)
       return
     } catch {
+      el.removeEventListener('webkitpresentationmodechanged', restore)
       /* already gone */
     }
   }
   if (typeof document !== 'undefined' && document.pictureInPictureElement) {
     try {
       await document.exitPictureInPicture()
+      restore()
     } catch {
       /* already gone */
     }

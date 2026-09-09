@@ -1119,6 +1119,8 @@ input[type=range]::-moz-range-thumb {
   position: fixed; z-index: 2147483100; padding: 4px;
   min-width: 224px; max-width: min(320px, calc(100dvw - 16px));
   background: var(--pop); color: var(--popover-foreground);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid var(--pop-line); border-radius: var(--radius-md); box-shadow: var(--shadow);
 }
 .menu button {
@@ -1138,7 +1140,10 @@ input[type=range]::-moz-range-thumb {
 /* The touch form: the same popover, sized for a thumb, with a name and a
    close on top. Scrolls inside itself past the visible height, which the
    script sets from the visual viewport. */
-.menu.touch { min-width: 248px; padding: 4px 6px 6px; overflow-y: auto; overscroll-behavior: contain; }
+.menu.touch {
+  width: min(224px, calc(100dvw - 24px)); min-width: 0; max-width: calc(100dvw - 24px);
+  padding: 4px 6px 6px; overflow-y: auto; overscroll-behavior: contain;
+}
 .menu.touch button { padding: 8px 10px; font-size: 13.5px; gap: 9px; min-width: 0; }
 .menu.touch button > :not(svg) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu.touch button svg { width: 17px; height: 17px; }
@@ -1467,7 +1472,11 @@ input[type=range]::-moz-range-thumb {
    phone's ordinary full-width 16:9 stage here too. */
 .app.narrow.sheet-open.slot-in-sheet .slot.stage {
   position: static; flex: none; width: 100dvw; height: var(--stage-h);
-  border-radius: 0; margin: 6px -20px 26px; box-shadow: none;
+  /* The player itself supplies any letterbox. A second black rectangle under
+     it exposed the slot's 20px inset whenever WebKit painted the video a frame
+     wider (measured 2026-09-10: "배경 까만색이 양끝이 짤려서 영상뒤에
+     직사각형있는것처럼 보임"). */
+  background: transparent; border-radius: 0; margin: 6px -20px 26px; box-shadow: none;
 }
 .app.narrow.sheet-open .sheetClose {
   display: inline-flex; align-items: center; justify-content: center;
