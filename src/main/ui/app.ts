@@ -791,7 +791,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   }, icon('pip', 18))
   pipButton.addEventListener('click', () => {
     if (pipOpen()) {
-      void exitPip().then(() => drawBar())
+      void exitPip(() => engine.resumeForBackground()).then(() => drawBar())
       return
     }
     // enterPip reaches WebKit synchronously before its first await. Keeping
@@ -807,7 +807,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     if (!narrowNow() && pipSupported()) {
       if (pipOpen()) {
         engine.setMode('music')
-        void exitPip().then(() => drawBar())
+        void exitPip(() => engine.resumeForBackground()).then(() => drawBar())
       } else {
         engine.setMode('video')
         // The window opens a beat later, so the button's lit state is redrawn

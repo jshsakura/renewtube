@@ -277,21 +277,22 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
       }
       video.pause = () => {
         paused = true
+        video.dispatchEvent(new Event('pause'))
       }
       Object.defineProperty(video, 'webkitPresentationMode', { configurable: true, writable: true, value: 'inline' })
       video.webkitSupportsPresentationMode = (mode) => mode === 'picture-in-picture'
       video.webkitSetPresentationMode = (mode) => {
         video.webkitPresentationMode = mode
-        // The order seen on iPhone: leaving PiP pauses the element as part of
-        // the presentation change. The second PiP press asked only to close
-        // the window, so the product has to preserve the playing state.
-        if (mode === 'inline') video.pause()
         video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+        // The order missed by the first regression: in 소리만 the inline
+        // transition finishes first, then WebKit pauses in a later task.
+        if (mode === 'inline') window.setTimeout(() => video.pause(), 80)
       }
       video.setAttribute('disablePictureInPicture', '')
     })
 
     const button = ui.locator('.bar .pip')
+    await expect(ui.locator('.slot')).toHaveClass(/hidden/)
     await expect(button).toBeVisible()
     await button.click()
     await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('picture-in-picture')
@@ -308,6 +309,7 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
     await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('inline')
     await expect(button).not.toHaveClass(/on/)
     await expect.poll(() => page.evaluate(() => Number(document.querySelector('video')!.dataset.pipRestoreCalls ?? '0'))).toBeGreaterThan(restoresBeforeExit)
+    await expect.poll(() => page.evaluate(() => !document.querySelector('video')!.paused)).toBe(true)
   } finally {
     await context.close()
   }

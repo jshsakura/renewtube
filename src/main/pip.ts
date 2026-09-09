@@ -99,8 +99,8 @@ export async function enterPip(onLeave: () => void): Promise<boolean> {
   return false
 }
 
-/** Closes the window if it is open. */
-export async function exitPip(): Promise<void> {
+/** Closes the window if it is open, preserving sound through WebKit's handoff. */
+export async function exitPip(onTransitionPause?: () => void): Promise<void> {
   const el = video()
   // iPhone WebKit may pause the media element while changing its presentation
   // back to inline. Closing a window is not a pause command: remember whether
@@ -110,7 +110,21 @@ export async function exitPip(): Promise<void> {
   const keepPlaying = !!el && !el.paused && !el.ended
   const restore = () => {
     if (!keepPlaying || !el || !el.paused || el.ended) return
+    // The engine calls both YouTube's player API and the element. Give it the
+    // paused state, before the direct play call can optimistically clear it;
+    // if WebKit rejects one route, the other still owns the recovery.
+    onTransitionPause?.()
     void el.play().catch(() => {})
+  }
+  // On the device the pause can arrive after the presentation-change event
+  // and after exitPip has returned, especially while RenewTube's video is
+  // parked for 소리만. Keep a narrow guard over that handoff instead of
+  // treating every later pause as PiP's. A real pause button outside this
+  // two-second transition is untouched.
+  const onPause = () => restore()
+  if (keepPlaying && el) {
+    el.addEventListener('pause', onPause)
+    window.setTimeout(() => el.removeEventListener('pause', onPause), 2000)
   }
   if (el?.webkitPresentationMode === 'picture-in-picture' && el.webkitSetPresentationMode) {
     el.addEventListener('webkitpresentationmodechanged', restore, { once: true })
@@ -124,6 +138,7 @@ export async function exitPip(): Promise<void> {
       return
     } catch {
       el.removeEventListener('webkitpresentationmodechanged', restore)
+      el.removeEventListener('pause', onPause)
       /* already gone */
     }
   }
@@ -132,6 +147,7 @@ export async function exitPip(): Promise<void> {
       await document.exitPictureInPicture()
       restore()
     } catch {
+      el?.removeEventListener('pause', onPause)
       /* already gone */
     }
   }
