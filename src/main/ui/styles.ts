@@ -1063,6 +1063,10 @@ input { font: inherit; color: inherit; }
 }
 .right { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .right .vol { width: 84px; margin-left: 4px; }
+/* OC Ad Bye Pass yields its page-level PiP button while this app owns the
+   player. RenewTube supplies the replacement on touch phones; desktop keeps
+   using the existing video button, whose action is native PiP there. */
+.right .pip { display: none; }
 
 /* A range input draws no progress of its own: left alone it is a grey line
    with a dot on it, which reads as a setting rather than as elapsed time. The
@@ -1410,7 +1414,7 @@ input[type=range]::-moz-range-thumb {
    moment a music video starts, and opening the player first to reach it is one
    press too many. The rest of the row waits inside. */
 .app.narrow:not(.sheet-open) .right { display: flex; gap: 0; }
-.app.narrow:not(.sheet-open) .right > *:not(.vid) { display: none; }
+.app.narrow:not(.sheet-open) .right > *:not(.vid):not(.pip) { display: none; }
 /* The elapsed line goes along the *bottom* edge, under everything — asked for
    twice. Above the controls it was a second horizontal rule in a bar that
    already has one. */
@@ -1600,11 +1604,13 @@ input[type=range]::-moz-range-thumb {
    were behind ⋯, which then has nothing left to open. Mute stays: the muted
    flag is a different permission and that one is honoured. */
 @media (hover: none) {
+  .app.narrow .right .pip { display: inline-flex; }
   .app.narrow.sheet-open .right .vol { display: none; }
   .app.narrow.sheet-open .right .sp,
   .app.narrow.sheet-open .right .sl { display: inline-flex; }
   .app.narrow.sheet-open .right .mr { display: none; }
-  /* A finger, on the row that now has six things in it. */
+  /* Eight 40px targets still fit a 393px phone when the gaps are kept tight. */
+  .app.narrow.sheet-open .right { gap: 2px; }
   .app.narrow.sheet-open .right button { width: 40px; height: 40px; }
   .app.narrow.sheet-open .right button svg { width: 19px; height: 19px; }
 }

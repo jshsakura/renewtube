@@ -165,6 +165,9 @@ export const EN: Record<string, string> = {
   "채널 열기": "Open channel",
   "진단": "Diagnostics",
   "화면 진단": "Screen diagnostics",
+  "화면 속 화면": "Picture in Picture",
+  "화면 속 화면 닫기": "Close Picture in Picture",
+  "이 브라우저에서 화면 속 화면을 열 수 없습니다.": "Picture in Picture could not be opened in this browser.",
   "복사": "Copy",
   "복사했습니다": "Copied",
 }

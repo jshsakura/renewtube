@@ -225,6 +225,51 @@ test('a narrow screen never floats the picture in a corner', async () => {
   }
 })
 
+test('the phone bar opens and closes WebKit Picture in Picture', async () => {
+  const { context, page } = await phone()
+  try {
+    await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    })
+    const ui = page.locator('oc-easy-mode')
+    await expect(ui.locator('.app.narrow')).toBeVisible()
+    await page.locator('video').waitFor({ state: 'attached', timeout: 60_000 })
+
+    // Safari/Orion on iPhone does not expose document.pictureInPictureEnabled;
+    // it exposes the presentation-mode pair on the video. Reproduce that API
+    // on Chromium so the mobile button and, importantly, its synchronous call
+    // from the tap are covered in the ordinary phone harness.
+    await page.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement & {
+        webkitPresentationMode: string
+        webkitSupportsPresentationMode(mode: string): boolean
+        webkitSetPresentationMode(mode: string): void
+      }
+      Object.defineProperty(video, 'webkitPresentationMode', { configurable: true, writable: true, value: 'inline' })
+      video.webkitSupportsPresentationMode = (mode) => mode === 'picture-in-picture'
+      video.webkitSetPresentationMode = (mode) => {
+        video.webkitPresentationMode = mode
+        video.dispatchEvent(new Event('webkitpresentationmodechanged'))
+      }
+      video.setAttribute('disablePictureInPicture', '')
+    })
+
+    const button = ui.locator('.bar .pip')
+    await expect(button).toBeVisible()
+    await button.click()
+    await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('picture-in-picture')
+    await expect(button).toHaveClass(/on/)
+    expect(await page.locator('video').getAttribute('disablePictureInPicture')).toBeNull()
+
+    await button.click()
+    await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('inline')
+    await expect(button).not.toHaveClass(/on/)
+  } finally {
+    await context.close()
+  }
+})
+
 test('the picture never covers the header', async () => {
   const { context, page } = await phone()
   try {

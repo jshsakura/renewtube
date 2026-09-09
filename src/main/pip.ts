@@ -1,48 +1,115 @@
-// Native Picture-in-Picture, for the desktop.
+// Native Picture-in-Picture.
 //
-// The desktop stage put YouTube's player — a fixed, light-DOM element — over
-// our shadow-DOM app and then fought the app for it on every scroll, every
-// hide and every fullscreen ("영역을 고정할때보다 안좋아졌지"). The browser has
-// a window built for exactly this, and it floats on its own outside our
-// layout, so none of those fights exist. On the desktop the picture goes there
-// instead of onto a stage of our own.
+// Chromium exposes the standard Document PiP API. iPhone WebKit exposes its
+// older video presentation API instead, and some builds offer only the native
+// fullscreen player whose own control hands the video to PiP. OC Ad Bye Pass
+// deliberately removes its floating button while RenewTube owns the player,
+// so this module has to cover all three routes itself.
 
-type Video = HTMLVideoElement & { disablePictureInPicture?: boolean }
-
-/** Whether this browser offers Picture-in-Picture at all. */
-export function pipSupported(): boolean {
-  return typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (document as Document).pictureInPictureEnabled
+interface WebkitVideo extends HTMLVideoElement {
+  webkitSupportsPresentationMode?: (mode: string) => boolean
+  webkitSetPresentationMode?: (mode: string) => void
+  webkitPresentationMode?: string
+  webkitEnterFullscreen?: () => void
 }
 
-/** Whether a Picture-in-Picture window is open right now. */
-export function pipOpen(): boolean {
-  return typeof document !== 'undefined' && document.pictureInPictureElement !== null
+function video(): WebkitVideo | null {
+  return typeof document === 'undefined' ? null : document.querySelector<WebkitVideo>('video')
 }
 
-/**
- * Opens the picture in its own floating window. Must be called from a gesture.
- *
- * `onLeave` fires once when the window closes, however it closes — our button
- * or the window's own — so the bar can drop back to sound and lower the
- * quality it no longer needs.
- */
-export async function enterPip(onLeave: () => void): Promise<boolean> {
-  const el = document.querySelector<Video>('video')
-  if (!el || !pipSupported()) return false
+function webkitPip(el: WebkitVideo | null): boolean {
+  if (!el || typeof el.webkitSetPresentationMode !== 'function') return false
   try {
-    // YouTube sets this to keep its own button off; the request throws while it
-    // is set, so clear it first.
-    el.disablePictureInPicture = false
-    await el.requestPictureInPicture()
-    el.addEventListener('leavepictureinpicture', onLeave, { once: true })
-    return true
+    return el.webkitSupportsPresentationMode?.('picture-in-picture') !== false
   } catch {
     return false
   }
 }
 
+/** Whether this browser offers a direct Picture-in-Picture route. */
+export function pipSupported(): boolean {
+  if (typeof document === 'undefined') return false
+  const standard = 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled
+  return standard || webkitPip(video())
+}
+
+/** Whether a Picture-in-Picture window is open right now. */
+export function pipOpen(): boolean {
+  if (typeof document === 'undefined') return false
+  const standard = 'pictureInPictureElement' in document && document.pictureInPictureElement !== null
+  return standard || video()?.webkitPresentationMode === 'picture-in-picture'
+}
+
+function allowPip(el: WebkitVideo): void {
+  el.removeAttribute('disablePictureInPicture')
+  el.disablePictureInPicture = false
+}
+
+/**
+ * Opens the picture in its own floating window. Must be called from a gesture.
+ *
+ * There is deliberately no await before either WebKit call: iOS expires the
+ * tap privilege as soon as control returns to the event loop. If that WebKit
+ * only has fullscreen, the native player is still useful — its own PiP button
+ * and the Home gesture are the system-supported hand-off.
+ */
+export async function enterPip(onLeave: () => void): Promise<boolean> {
+  const el = video()
+  if (!el) return false
+  allowPip(el)
+
+  // A paused element is refused by WebKit. This is still inside the button's
+  // gesture, and the press explicitly asked to watch it.
+  if (el.paused) void el.play().catch(() => {})
+
+  if (webkitPip(el) && el.webkitSetPresentationMode) {
+    const changed = (): void => {
+      if (el.webkitPresentationMode === 'picture-in-picture') return
+      el.removeEventListener('webkitpresentationmodechanged', changed)
+      onLeave()
+    }
+    el.addEventListener('webkitpresentationmodechanged', changed)
+    try {
+      el.webkitSetPresentationMode('picture-in-picture')
+      return true
+    } catch {
+      el.removeEventListener('webkitpresentationmodechanged', changed)
+      // A standard implementation may coexist and still accept the request.
+    }
+  }
+
+  if (typeof el.requestPictureInPicture === 'function' && document.pictureInPictureEnabled) {
+    try {
+      await el.requestPictureInPicture()
+      el.addEventListener('leavepictureinpicture', onLeave, { once: true })
+      return true
+    } catch {
+      // The last iPhone route is its native fullscreen player.
+    }
+  }
+
+  if (typeof el.webkitEnterFullscreen === 'function') {
+    try {
+      el.webkitEnterFullscreen()
+      return true
+    } catch {
+      /* unsupported for this media */
+    }
+  }
+  return false
+}
+
 /** Closes the window if it is open. */
 export async function exitPip(): Promise<void> {
+  const el = video()
+  if (el?.webkitPresentationMode === 'picture-in-picture' && el.webkitSetPresentationMode) {
+    try {
+      el.webkitSetPresentationMode('inline')
+      return
+    } catch {
+      /* already gone */
+    }
+  }
   if (typeof document !== 'undefined' && document.pictureInPictureElement) {
     try {
       await document.exitPictureInPicture()

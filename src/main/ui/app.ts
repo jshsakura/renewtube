@@ -766,10 +766,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    * then you are looking at the player, not the menu. One button in the bar,
    * pressed as often as you like.
    *
-   * A phone has two states, because there is nowhere for a corner window to
-   * float on 390 pixels. A desktop has three, so the picture can sit in the
-   * corner while you read a list — the placement menu used to offer that and
-   * this is where it went.
+   * A phone still has the two in-page states. Its system PiP is a separate
+   * button: 작은 창 and 소리만 are different requests and combining them is
+   * how the PiP entry disappeared from mobile in the first place.
    *
    * The list's shape follows the big one: watching is 영상, and 영상 draws
    * thumbnails.
@@ -778,8 +777,28 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // second layout to tell apart, and the owner asked to drop it and keep the
   // fill only (2026-09-07, "안되면 꽉채움만"). So the button is a plain toggle.
   // On the desktop the picture is a Picture-in-Picture window, not a stage of
-  // ours; on a phone (no native PiP to rely on) it is still the stage.
+  // ours; on a phone the ordinary video toggle still owns the full-width
+  // stage, beside the explicit native-PiP button below.
   const videoOrder = (): Placement[] => ['hidden', 'stage']
+  const pipButton = h('button', {
+    class: 'pip',
+    'data-nav': '',
+    title: t('화면 속 화면'),
+    'aria-label': t('화면 속 화면'),
+  }, icon('pip', 18))
+  pipButton.addEventListener('click', () => {
+    if (pipOpen()) {
+      void exitPip().then(() => drawBar())
+      return
+    }
+    // enterPip reaches WebKit synchronously before its first await. Keeping
+    // this call directly in the click handler is what preserves iOS's gesture
+    // token; moving it through a timer makes the same API look unsupported.
+    void enterPip(() => drawBar()).then((opened) => {
+      if (!opened) toast(shell.overlay, t('이 브라우저에서 화면 속 화면을 열 수 없습니다.'), true)
+      drawBar()
+    })
+  })
   const videoButton = h('button', { class: 'vid', 'data-nav': '', title: t('화면 보기') }, icon('video', 18))
   videoButton.addEventListener('click', () => {
     if (!narrowNow() && pipSupported()) {
@@ -1049,7 +1068,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // The heart leads the right-hand row on every screen. Beside the title it
   // took the title's room in a column that has little: "하트 위치가 제목
   // 짜르고 있네" (2026-09-04). The title's column is the title's.
-  const rightRow = h('div', { class: 'right' }, rateBox, queueButton, lyricsButton, speedButton, sleepButton, moreButton, muteButton, volume, videoButton)
+  const rightRow = h('div', { class: 'right' }, rateBox, queueButton, lyricsButton, speedButton, sleepButton, moreButton, muteButton, volume, pipButton, videoButton)
   const now = h('div', { class: 'now' }, nowThumb, h('div', { class: 'nowText' }, nowTitle, nowBy))
   // The track itself is the handle: a phone opens the player by tapping what
   // is playing, which is what every music app has taught. It is a button on a
@@ -1117,6 +1136,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     replace(videoButton, icon(picture ? 'videoOff' : 'video', 18))
     videoButton.className = picture ? 'vid on' : 'vid'
     videoButton.title = picture ? t('소리만 듣기') : t('화면 보기')
+    pipButton.className = pipOpen() ? 'pip on' : 'pip'
+    pipButton.title = pipOpen() ? t('화면 속 화면 닫기') : t('화면 속 화면')
+    pipButton.setAttribute('aria-label', pipButton.title)
     prevButton.disabled = engine.state.queue.length === 0
     nextButton.disabled = engine.state.queue.length === 0
     loadRating()

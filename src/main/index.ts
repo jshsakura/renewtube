@@ -166,7 +166,13 @@ async function start(): Promise<void> {
   }
   starting = true
   let shell: Shell | undefined
+  let wake: (() => void) | undefined
   try {
+    // Before the first await, and before YouTube gets another turn to attach
+    // player lifecycle listeners. A document-level listener installed after
+    // the player cannot protect background audio on WebKit: the player's own
+    // listener has already paused it by the time ours runs.
+    wake = keepAwake()
     shell = mount((reason) => {
       // The panic key and the watchdog both mean the same thing: get out now.
       leave(reason === 'panic')
@@ -233,17 +239,13 @@ async function start(): Promise<void> {
     // The lock screen and the headphone buttons, pointed at our queue rather
     // than at YouTube's autoplay.
     const unbindSession = bindMediaSession(engine)
-    // Keep the page reporting itself visible, so YouTube does not pause the
-    // moment the tab goes to the background.
-    const wake = keepAwake()
-
     running = {
       shell,
       engine,
       destroy() {
         app.destroy()
         unbindSession()
-        wake()
+        wake?.()
         engine.detach()
       },
     }
@@ -253,6 +255,7 @@ async function start(): Promise<void> {
     }
   } catch (err) {
     console.warn('[RenewTube] 시작하지 못했습니다:', err)
+    wake?.()
     shell?.teardown()
     running = null
     leave(false)

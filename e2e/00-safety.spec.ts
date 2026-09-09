@@ -72,22 +72,29 @@ test('nothing of YouTube shows through, even with its guide drawer open', async 
     })
     await h.page.waitForTimeout(800)
     const visible = await h.page.evaluate(() => {
-      let n = 0
+      const out: string[] = []
       const walk = (root: Document | ShadowRoot) => {
         for (const el of root.querySelectorAll('*')) {
           if (el.closest('oc-easy-mode, oc-easy-mode-overlay')) continue
           if (el.shadowRoot) walk(el.shadowRoot)
+          // The document canvas is expected to cover the viewport. It is not
+          // YouTube chrome and the stricter hit-test below likewise permits
+          // html/body; counting the two roots made this census fail while the
+          // only things it named were the page itself.
+          if (el === document.documentElement || el === document.body) continue
           if (el.closest('#movie_player, #player-control-container, bottom-sheet-container')) continue
           const cs = getComputedStyle(el)
           if (cs.visibility !== 'visible' || cs.display === 'none') continue
           const r = el.getBoundingClientRect()
-          if (r.width >= 40 && r.height >= 40) n++
+          if (r.width >= 40 && r.height >= 40) {
+            out.push(`${el.tagName.toLowerCase()}#${el.id}.${[...el.classList].slice(0, 3).join('.')} ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`)
+          }
         }
       }
       walk(document)
-      return n
+      return out
     })
-    expect(visible).toBe(0)
+    expect(visible).toEqual([])
   } finally {
     await h.close()
   }
