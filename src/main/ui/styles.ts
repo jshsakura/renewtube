@@ -1457,11 +1457,13 @@ input[type=range]::-moz-range-thumb {
   background: var(--pop-solid);
   border-top: 0;
 }
-/* The picture sits in the opened player where the artwork is, at the width
-   the artwork has, 16:9. The stage across the top is for the lists. */
+/* The picture moves into the opened player without changing size. Insetting it
+   by the sheet's 20px padding shrank a 393x221 stage to 353x199 and added a
+   second, rounded presentation for the same video (2026-09-09). It stays the
+   phone's ordinary full-width 16:9 stage here too. */
 .app.narrow.sheet-open.slot-in-sheet .slot.stage {
-  position: static; width: 100%; height: auto; aspect-ratio: 16 / 9;
-  border-radius: var(--radius-lg); margin: 6px 0 26px; box-shadow: var(--shadow);
+  position: static; flex: none; width: 100dvw; height: var(--stage-h);
+  border-radius: 0; margin: 6px -20px 26px; box-shadow: none;
 }
 .app.narrow.sheet-open .sheetClose {
   display: inline-flex; align-items: center; justify-content: center;

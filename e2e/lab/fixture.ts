@@ -26,6 +26,7 @@ export type Fault =
   | 'stall'
   | 'swap'
   | 'keeps-previous'
+  | 'paused-buffering'
   | 'no-player'
 
 export interface LabConfig {

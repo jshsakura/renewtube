@@ -94,7 +94,7 @@ Before a release, run the [60-second real-phone check](docs/phone-checklist.md).
 npm install
 npm run build     # → dist/
 npm test          # builds, then runs the e2e suite against live youtube.com
-npm run test:lab  # the playback fault matrix; no network, ~2.5 minutes
+npm run test:lab  # the playback fault matrix; no network, ~4 minutes
 npm run check     # types only
 npm run zip       # renewtube.zip from dist/
 npm run site      # assembles the website the way GitHub Pages does

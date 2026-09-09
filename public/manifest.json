@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "0.24.10",
+  "version": "0.24.11",
   "default_locale": "en",
   "author": "OpenCourse",
   "description": "__MSG_extDescription__",

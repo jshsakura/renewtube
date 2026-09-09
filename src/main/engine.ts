@@ -335,8 +335,8 @@ export class Engine {
     this.applyVolume()
     this.applyRate()
     this.applyQuality()
-    this.adoptPlaying()
     this.holdArrival()
+    this.adoptPlaying()
     // A player swapped out from under a playing track takes the sound with it.
     // The new one knows nothing about what was playing, so it is told — the
     // alternative is music that stops when the page rearranges itself, with
@@ -459,20 +459,34 @@ export class Engine {
     Engine.arrivalSeen = true
     const ours = takeArrival()
     const here = videoIdInUrl()
+    const named = this.namedVideo()
+    const remembered = here !== undefined
+      && this.current?.videoId === here
+      && (named === undefined || named === '' || named === here)
     // Our own arrival is a track someone pressed, still waiting to be heard.
     // Saying so here is what puts the watch page under the same ladder as
     // everywhere else: without it the engine has no intent on this page at all
     // — it only adopts whatever plays — so an arrival that never starts is a
     // silence nothing is watching. YouTube usually starts it within the grace
     // period and the intent is dropped unused.
-    if (here && ours === here) {
+    // A reload of the track the queue was already on is not YouTube choosing
+    // a video for us. The URL and saved cursor name the same thing and the
+    // player either agrees or has not named anything yet, so carry the
+    // listening intent across the new document. This
+    // exact state was held as an unsolicited arrival on 2026-09-09: the bar
+    // and player both named T6GNG4A8U0c, while diagnostics said "요청 없음"
+    // and "도착 보류 중" over a paused Buffering player. `adoptPlaying()` is
+    // deliberately called after this check: adopting the URL first would make
+    // every unrelated watch page look remembered.
+    if (here && (ours === here || remembered)) {
       this.loadedId = here
       this.loadAskedAt = Date.now()
+      this.progressAt = Date.now()
       this.rescue = rescueRecord(here)
       this.wantsPlaying = true
       this.wantsSound = true
     }
-    if (!here || ours === here) return
+    if (!here || ours === here || remembered) return
     // Late is not an arrival. A page that has been open for a while and then
     // gets the mode switched on was playing by the reader's choice.
     if (performance.now() > 15_000) return
@@ -648,7 +662,16 @@ export class Engine {
     // something to recover from. A track that dies mid-way stalls rather than
     // pausing, and the clock below is what catches that.
     if (el.paused) {
-      if (this.everPlayed) return false
+      // A deliberate pause is State.Paused. The real iPhone instead reported
+      // State.Buffering while its loaded element was paused at zero for 21.4s
+      // (2026-09-09). That combination is the player trying and failing, not a
+      // lock-screen or headset pause, so hearing the track once cannot exempt
+      // it from recovery for ever.
+      const pausedBuffering = this.player?.getPlayerState() === State.Buffering
+        && this.bufferingSince !== undefined
+        && Date.now() - this.bufferingSince > STALL_HARD_MS
+      if (this.everPlayed && !pausedBuffering) return false
+      if (pausedBuffering) return true
       // Nothing in it at all is the dormant player, and that is what the
       // dormancy grace is for. Something in it that has not started is a slow
       // start until it has had a fair go.

@@ -295,6 +295,35 @@ test('a watch page opened by hand plays nothing by itself and is never rescued',
   expect(v.trouble).toBeUndefined()
 })
 
+test('a remembered watch track that collapses into paused buffering is recovered', async ({ page }) => {
+  // Real iPhone, 2026-09-09: URL, player and queue all named T6GNG4A8U0c,
+  // but the engine said "요청 없음 · 도착 보류 중" while the player stayed
+  // State.Buffering and its loaded element stayed paused at zero for 21.4s.
+  // This is a reload of the track already being heard, not an unrelated watch
+  // autoplay; carry its intent over, then make the bounded ladder answer when
+  // the impossible paused-buffering combination does not clear.
+  await page.addInitScript(() => {
+    localStorage.setItem('oc-easy-mode:state', JSON.stringify({
+      queue: [{ videoId: 'v1', title: 'track 1', byline: 'lab', duration: '0:30', unavailable: false }],
+      index: 0,
+      video: 'stage',
+    }))
+  })
+  await lab(page, { fault: 'paused-buffering', reload: 'healthy' }, '/watch?v=v1')
+  // It really is heard first; do not let that short healthy window satisfy
+  // the assertion that is meant to answer what happens after the collapse.
+  await expectSound(page, 5000)
+  await expect
+    .poll(async () => (await view(page)).sounding, { timeout: 5000 })
+    .toBe(false)
+  await expectSound(page, 30_000)
+  const v = await view(page)
+  expect(v.videoId).toBe('v1')
+  expect(v.playerVideoId).toBe('v1')
+  expect(v.playingTitle).toBe('track 1')
+  expect(v.visit, 'the stuck watch player was rebuilt').toBeGreaterThan(1)
+})
+
 test('repeating one track restarts it rather than rescuing it', async ({ page }) => {
   await lab(page, { fault: 'healthy' })
   await playQueue(page, 2)

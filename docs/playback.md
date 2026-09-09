@@ -65,6 +65,12 @@ ID도 단독으로는 믿지 않지만, 현재 큐와 **다른 비어 있지 않
 - **도착 보류.** 우리 표시 없이 `/watch` 에 들어온 것은 사람이 직접 온 것이다. 페이지의
   자체 시작을 눌러 두고 있으며(`holding`), 눌러 둔 곡은 실패한 곡이 아니다
 - **일부러 멈춤.** 일시정지, 취침 타이머, 큐 끝. `wantsSound` 가 꺼진다
+- **같은 곡으로 재진입.** URL과 저장된 현재 곡이 같고 플레이어도 같거나 아직
+  빈 이름이면 새 문서에서도 재생 의도를 이어받는다. 서로 다르다면 YouTube의 도착
+  자동재생으로 보고 기존처럼 눌러 둔다
+- **정지한 버퍼링.** 이미 들린 곡이라도 플레이어가 Buffering인데 video가
+  15초 넘게 paused라면 외부 일시정지가 아니라 실패로 판정한다. 정상적인
+  잠금 화면·헤드셋 일시정지는 State.Paused라서 이 조건에 들어오지 않는다
 - **곡의 끝.** `ended` 는 큐가 처리한다. 사다리는 손대지 않는다
 
 ## 두 개의 의도를 구분한다
@@ -83,12 +89,12 @@ ID도 단독으로는 믿지 않지만, 현재 큐와 **다른 비어 있지 않
 
 ## 어디서 검증하나
 
-`e2e/16-playback.spec.ts` 30개(고장 6종은 한 표에서 돈다). **실제 유튜브를 쓰지 않는다.** 로그인 상태의 고장은
+`e2e/16-playback.spec.ts` 31개(고장 6종은 한 표에서 돈다). **실제 유튜브를 쓰지 않는다.** 로그인 상태의 고장은
 하네스에서 재현되지 않기 때문이다(로그아웃 재생기는 늘 잘 논다). 대신
 `e2e/lab/` 이 **일부러 고장 나는 재생기**를 만든다.
 
 ```
-e2e/lab/entry.ts     고장 14종을 이름으로 켜는 가짜 재생기 + 진짜 Engine
+e2e/lab/entry.ts     고장 15종을 이름으로 켜는 가짜 재생기 + 진짜 Engine
 e2e/lab/fixture.ts   page.route 로 youtube.com 을 통째로 대신 응답
 npm run test:lab     빌드 + 이 스펙만
 ```
@@ -96,11 +102,11 @@ npm run test:lab     빌드 + 이 스펙만
 **엔진은 가짜가 아니다.** 진짜 `Engine` 이 진짜 `<video>` 에 붙고, 구조가 이동하면
 주소가 진짜로 바뀌며, 도착한 페이지도 같은 방식으로 응답된다. 그래서 검증 대상은
 "한 단계의 동작"이 아니라 **페이지를 넘나드는 복구 전체**다. 네트워크를 쓰지 않아
-2분 30초에 끝나고 흔들리지 않는다.
+4분 안팎에 끝나고 흔들리지 않는다.
 
-고장 14종: `healthy` `dormant` `loaded-paused` `play-rejects` `stuck-unstarted`
+고장 15종: `healthy` `dormant` `loaded-paused` `play-rejects` `stuck-unstarted`
 `ad-phantom` `ad-real` `error` `throws` `slow` `stall` `swap` `keeps-previous`
-`no-player`.
+`paused-buffering` `no-player`.
 `dead: ['v1']` 로 **특정 곡만** 고장 내면 포기와 다음 곡까지 한 판에서 본다.
 
 ## 고칠 때 조심할 것

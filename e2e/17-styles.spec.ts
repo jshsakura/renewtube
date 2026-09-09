@@ -123,3 +123,16 @@ test('app-level surfaces never ask the compositor for a layer', () => {
   )
   expect(momentum).toEqual([...momentumWhitelist].map(([selector, value]) => ({ selector, value })))
 })
+
+test('the opened phone player keeps the ordinary stage size', () => {
+  // The detail sheet used to inset the same video by its 20px page padding,
+  // turning the ordinary 393x221 phone stage into a separate 353x199 card.
+  // Moving the slot is enough; opening details must not resize it.
+  const rule = cssRules(STYLES).find(({ selector }) => selector === '.app.narrow.sheet-open.slot-in-sheet .slot.stage')
+  expect(rule, 'the slot-in-sheet rule exists').toBeDefined()
+  const declarations = Object.fromEntries(rule!.declarations.map(({ property, value }) => [property, value]))
+  expect(declarations.width).toBe('100dvw')
+  expect(declarations.height).toBe('var(--stage-h)')
+  expect(declarations['border-radius']).toBe('0')
+  expect(declarations['box-shadow']).toBe('none')
+})

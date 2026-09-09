@@ -44,6 +44,8 @@ export type Fault =
   | 'swap'
   /** Keeps the first video running and swallows every later load. */
   | 'keeps-previous'
+  /** Plays, then becomes State.Buffering with a loaded, paused element. */
+  | 'paused-buffering'
   /** No player in the page at all: the case that has to navigate to find one. */
   | 'no-player'
 
@@ -209,6 +211,7 @@ function build(): Fake {
   let muted = false
   let quality = 'auto'
   let clock: number | undefined
+  let pausedBufferingScheduled = false
   const listeners = new Map<string, Array<(...a: unknown[]) => void>>()
 
   const emit = (name: string): void => {
@@ -263,6 +266,24 @@ function build(): Fake {
     emit('onStateChange')
   }
 
+  /** The shape reported by the real phone: heard once, then paused at zero
+   * while the player insists it is Buffering. Further play calls are swallowed
+   * until the recovery ladder rebuilds the page. */
+  const collapseIntoPausedBuffering = (): void => {
+    if (pausedBufferingScheduled) return
+    pausedBufferingScheduled = true
+    window.setTimeout(() => {
+      s.paused = true
+      s.waiting = true
+      s.currentTime = 0
+      s.readyState = 4
+      s.networkState = 2
+      state = 3
+      fire('waiting')
+      emit('onStateChange')
+    }, 1200)
+  }
+
   let adUntil = 0
   const showAd = (forHowLong: number): void => {
     adUntil = Date.now() + forHowLong
@@ -285,6 +306,13 @@ function build(): Fake {
     if (fault === 'dormant' || fault === 'loaded-paused' || fault === 'ad-phantom') return Promise.resolve()
     if (fault === 'stall') {
       wait()
+      return Promise.resolve()
+    }
+    if (fault === 'paused-buffering') {
+      if (!pausedBufferingScheduled) {
+        start()
+        collapseIntoPausedBuffering()
+      }
       return Promise.resolve()
     }
     if (s.readyState === 0 && fault !== 'healthy' && fault !== 'stuck-unstarted') return Promise.resolve()
@@ -384,6 +412,13 @@ function build(): Fake {
       if (fault === 'dormant' || fault === 'loaded-paused' || fault === 'ad-phantom') return
       if (fault === 'play-rejects' && !gestureGiven) return
       if (fault === 'error' || fault === 'slow' || fault === 'stall') return
+      if (fault === 'paused-buffering') {
+        if (!pausedBufferingScheduled) {
+          start()
+          collapseIntoPausedBuffering()
+        }
+        return
+      }
       if (s.error) return
       start()
     },

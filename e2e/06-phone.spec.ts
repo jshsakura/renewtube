@@ -399,6 +399,14 @@ test('the player bar opens into a full player and closes again', async () => {
     expect(closed.height).toBeLessThan(app.height / 3)
     await expect(ui.locator('.ctl .sh')).toBeHidden()
 
+    // Put the ordinary phone stage on and remember its box. Opening details
+    // moves that same slot into the player, but must not turn it into a smaller
+    // inset card (reported 2026-09-09: "영상사이즈 조정말고 기본사이즈 유지").
+    const slot = ui.locator('.slot')
+    if (!(await slot.evaluate((el) => el.classList.contains('stage')))) await ui.locator('.bar .vid').click()
+    await expect(slot).toHaveClass(/stage/)
+    const ordinaryStage = (await slot.boundingBox())!
+
     // Tapping what is playing opens the same element full-screen, with
     // everything on it.
     await ui.locator('.bar .now').click()
@@ -406,6 +414,10 @@ test('the player bar opens into a full player and closes again', async () => {
     await expect(ui.locator('.right')).toBeVisible()
     const open = (await ui.locator('.bar').boundingBox())!
     expect(open.height).toBeGreaterThan(app.height / 2)
+    const detailedStage = (await slot.boundingBox())!
+    expect(Math.abs(detailedStage.width - ordinaryStage.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(detailedStage.height - ordinaryStage.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(detailedStage.x - ordinaryStage.x)).toBeLessThanOrEqual(1)
 
     await ui.locator('.sheetClose').click()
     await expect(ui.locator('.ctl .sh')).toBeHidden()
