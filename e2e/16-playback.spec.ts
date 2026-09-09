@@ -386,3 +386,14 @@ test('a track paused from outside the app stays paused', async ({ page }) => {
   expect(v.sounding, 'a pause somebody made is a pause').toBe(false)
   expect(v.path, 'and never a reason to move the page').toBe('/')
 })
+
+test('a track iOS pauses while entering the background is handed back to background audio', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { background(): void } }).LAB.background())
+  await expectSound(page, 10_000)
+  const v = await view(page)
+  expect(v.path, 'background hand-off does not reload the player').toBe('/')
+  expect(v.playingTitle).toBe('track 1')
+})

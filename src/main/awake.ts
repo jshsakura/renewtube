@@ -13,8 +13,18 @@
 // on a poll, so a throttled hidden-tab timer was never what moved it). Undone
 // on the way out, so a page we no longer drive gets its own visibility back.
 
-export function keepAwake(source: Document = document, host: Window = window): () => void {
+export function keepAwake(onBackground: () => void = () => {}, source: Document = document, host: Window = window): () => void {
   const doc = source as Document & Record<string, unknown>
+  // Keep one honest getter before the own-property lie shadows it. Return
+  // visibility events must not restart a pause made from the lock screen.
+  let realHidden: (() => boolean) | undefined
+  for (let proto = Object.getPrototypeOf(source); proto; proto = Object.getPrototypeOf(proto)) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'hidden')
+    if (descriptor?.get) {
+      realHidden = () => descriptor.get!.call(source) === true
+      break
+    }
+  }
   const removed: string[] = []
   const spoof = (key: string, value: unknown): void => {
     // These live on Document.prototype, so an own property shadows them and a
@@ -42,9 +52,20 @@ export function keepAwake(source: Document = document, host: Window = window): (
   // an event does not keep a genuinely unloaded page alive — it only prevents
   // YouTube from pausing the media while the browser hands it to background
   // audio.
-  const swallow = (e: Event): void => e.stopImmediatePropagation()
+  const swallow = (e: Event): void => {
+    e.stopImmediatePropagation()
+    // iOS has already paused the video by the time the departure signal is
+    // delivered (measured again on Orion, 2026-09-10: sound stopped outside,
+    // then the same 649s video resumed on return). The visibility lie prevents
+    // YouTube tearing the player down; this nudge is the other half, handing
+    // that still-loaded element back to Orion's enabled background playback.
+    const departing = e.type === 'pagehide' || e.type === 'freeze' || realHidden?.() === true
+    if (departing) onBackground()
+  }
   const documentEvents = ['visibilitychange', 'webkitvisibilitychange', 'freeze'] as const
-  const windowEvents = ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'blur', 'pagehide'] as const
+  // blur is deliberately absent: touching the address bar and opening a popup
+  // blur the window too, and neither means the page is going to background.
+  const windowEvents = ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'pagehide'] as const
   const capture = { capture: true }
   for (const ev of documentEvents) source.addEventListener(ev, swallow, capture)
   for (const ev of windowEvents) host.addEventListener(ev, swallow, capture)

@@ -557,6 +557,11 @@ const lab = {
   setRepeat(mode: 'off' | 'one' | 'all') {
     engine.setRepeat(mode)
   },
+  /** The order measured on iOS: the browser pauses, then announces hidden. */
+  background() {
+    document.querySelector('video')?.pause()
+    engine.resumeForBackground()
+  },
   /**
    * Is the clock actually moving?
    *

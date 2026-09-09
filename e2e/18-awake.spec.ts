@@ -21,13 +21,14 @@ class HiddenDocument extends EventTarget {
 test('background lifecycle cannot pause YouTube while RenewTube is running', () => {
   const doc = new HiddenDocument()
   const win = new EventTarget()
-  const restore = keepAwake(doc as unknown as Document, win as unknown as Window)
+  let nudges = 0
+  const restore = keepAwake(() => { nudges++ }, doc as unknown as Document, win as unknown as Window)
   const heard: string[] = []
 
   for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze']) {
     doc.addEventListener(name, () => heard.push(`document:${name}`))
   }
-  for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'blur', 'pagehide']) {
+  for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'pagehide']) {
     win.addEventListener(name, () => heard.push(`window:${name}`))
   }
 
@@ -35,8 +36,9 @@ test('background lifecycle cannot pause YouTube while RenewTube is running', () 
   expect((doc as unknown as Document).visibilityState).toBe('visible')
   expect((doc as unknown as Document).hasFocus()).toBe(true)
   for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze']) doc.dispatchEvent(new Event(name))
-  for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'blur', 'pagehide']) win.dispatchEvent(new Event(name))
+  for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'pagehide']) win.dispatchEvent(new Event(name))
   expect(heard).toEqual([])
+  expect(nudges).toBeGreaterThan(0)
 
   restore()
   expect((doc as unknown as Document).hidden).toBe(true)
@@ -49,7 +51,7 @@ test('background lifecycle cannot pause YouTube while RenewTube is running', () 
 test('the background guard is installed before startup yields', () => {
   const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
   const start = source.indexOf('async function start()')
-  const guard = source.indexOf('wake = keepAwake()', start)
+  const guard = source.indexOf('wake = keepAwake(', start)
   const firstYield = source.indexOf('await waitForYtCfg()', start)
   expect(start).toBeGreaterThanOrEqual(0)
   expect(guard).toBeGreaterThan(start)

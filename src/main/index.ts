@@ -167,12 +167,13 @@ async function start(): Promise<void> {
   starting = true
   let shell: Shell | undefined
   let wake: (() => void) | undefined
+  let resumeBackground = (): void => {}
   try {
     // Before the first await, and before YouTube gets another turn to attach
     // player lifecycle listeners. A document-level listener installed after
     // the player cannot protect background audio on WebKit: the player's own
     // listener has already paused it by the time ours runs.
-    wake = keepAwake()
+    wake = keepAwake(() => resumeBackground())
     shell = mount((reason) => {
       // The panic key and the watchdog both mean the same thing: get out now.
       leave(reason === 'panic')
@@ -185,6 +186,7 @@ async function start(): Promise<void> {
     if (!cfg) throw new InnertubeError('ytcfg never appeared', 'shape')
 
     const engine = new Engine()
+    resumeBackground = () => engine.resumeForBackground()
     // YouTube's own interface language decides ours unless the reader has
     // said otherwise. Reading one language on the page and another over it is
     // worse than either.

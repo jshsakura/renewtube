@@ -1541,6 +1541,25 @@ export class Engine {
 
   // ── Transport ─────────────────────────────────────────────────────────────
 
+  /**
+   * Reassert a track iOS paused while handing the page to background audio.
+   *
+   * This is not general recovery and must never turn an external pause back
+   * on. It is called only from an honest hidden/pagehide transition, and only
+   * if this same track is still wanted. The player's synchronous pause event
+   * clears `wasSounding` before WebKit announces hidden, so that observation
+   * cannot gate the hand-off. Measured on iPhone Orion, 2026-09-10: on return the element was
+   * still loaded at 649s and immediately playing again, proving the page was
+   * suspended rather than the queue or player being lost.
+   */
+  resumeForBackground(): void {
+    if (!this.wantsSound || this.wantPaused || !this.current) return
+    const el = this.videoEl()
+    if (!el || !el.paused || el.ended) return
+    this.wantsPlaying = true
+    this.tryStart()
+  }
+
   toggle(): void {
     this.releaseHold()
     const p = this.player
