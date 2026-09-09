@@ -1488,7 +1488,7 @@ input[type=range]::-moz-range-thumb {
 }
 /* The picture stands where the cover would; a cover under it would be a
    second answer to the same question. */
-.app.narrow.sheet-open.has-stage .bar .now .thumb { display: none; }
+.app.narrow.sheet-open.slot-in-sheet .bar .now .thumb { display: none; }
 
 /* With the words open they are what the pane is for: the artwork steps aside
    and the list takes the room the transport is not using. */

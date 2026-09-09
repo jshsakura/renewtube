@@ -136,3 +136,11 @@ test('the opened phone player keeps the ordinary stage size', () => {
   expect(declarations['border-radius']).toBe('0')
   expect(declarations['box-shadow']).toBe('none')
 })
+
+test('a video seated in the phone player cannot leave its poster behind it', () => {
+  // The slot-in-sheet flag is the placement fact; has-stage is a second class
+  // updated on a different line. Measured 2026-09-10: the square cover flashed
+  // behind the live video. The cover is gone for the whole seated interval.
+  const rule = cssRules(STYLES).find(({ selector }) => selector === '.app.narrow.sheet-open.slot-in-sheet .bar .now .thumb')
+  expect(rule?.declarations).toContainEqual({ property: 'display', value: 'none' })
+})

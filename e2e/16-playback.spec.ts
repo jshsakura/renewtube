@@ -202,6 +202,21 @@ test('a video YouTube autoplays outside the queue is rejected', async ({ page })
   await expectSound(page, 5000)
 })
 
+test('YouTube video controls advance RenewTube queue instead of autonav', async ({ page }) => {
+  // The visible player and the bar share one media element but not one queue.
+  // Measured 2026-09-10: "영상에서 다음재생을 누르면 안넘어가네 ... 같은영상이
+  // 계속 나오는상황 그러나 재생기쪽 다음영상은 잘됨". The native press must
+  // become the exact same engine action as the bar's Next button.
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page, 3)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { nativeNext(): void } }).LAB.nativeNext())
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 8000 }).toBe('v2')
+  const v = await view(page)
+  expect(v.playingTitle).toBe('track 2')
+  expect(v.index).toBe(1)
+})
+
 test('an unrequested autoplay is stopped without inventing a current track', async ({ page }) => {
   await lab(page, { fault: 'healthy' })
   await page.evaluate(() => (window as unknown as { LAB: { autoplay(id: string): void } }).LAB.autoplay('outside'))

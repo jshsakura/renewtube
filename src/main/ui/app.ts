@@ -27,6 +27,7 @@ import { render } from './views.ts'
 import { closeSearch, openSearch } from './search.ts'
 import { closeSettings, openSettings, type SettingsActions } from './settings.ts'
 import { MENU, menuLines, setMenuOn, topicTitle } from '../menu.ts'
+import { installNativeNext } from '../native-controls.ts'
 
 export interface AppOptions {
   shell: Shell
@@ -39,6 +40,7 @@ export interface AppOptions {
 
 export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   const { shell, engine } = opts
+  const offNativeNext = installNativeNext(engine)
 
   const main = h('div', { class: 'main' })
   const slot = h('div', { class: 'slot' })
@@ -673,10 +675,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
 
   const moreButton = h('button', { class: 'mr', 'data-nav': '', title: t('더보기') }, icon('more', 18))
 
-  const showSpeedMenu = () =>
+  const showSpeedMenu = (anchor: HTMLElement = moreButton) =>
     showMenu(
       shell.overlay,
-      moreButton,
+      anchor,
       RATES.map((rate) => ({
         label: rateLabel(rate),
         icon: engine.state.rate === rate ? ('check' as const) : undefined,
@@ -685,9 +687,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
           drawBar()
         },
       })),
+      t('재생 속도'),
     )
 
-  const showSleepMenu = () => {
+  const showSleepMenu = (anchor: HTMLElement = moreButton) => {
     const items: Array<MenuItem | '-'> = [15, 30, 60].map((minutes) => ({
       label: `${minutes}분 뒤 정지`,
       icon: 'moon' as const,
@@ -717,7 +720,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         },
       })
     }
-    showMenu(shell.overlay, moreButton, items)
+    showMenu(shell.overlay, anchor, items, t('수면 예약'))
   }
 
   moreButton.addEventListener('click', () => {
@@ -754,9 +757,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    * button sitting two places along in the same row.
    */
   const speedButton = h('button', { class: 'sp', 'data-nav': '', title: t('재생 속도') }, '1x')
-  speedButton.addEventListener('click', showSpeedMenu)
+  speedButton.addEventListener('click', () => showSpeedMenu(speedButton))
   const sleepButton = h('button', { class: 'sl', 'data-nav': '', title: t('수면 예약') }, icon('moon', 18))
-  sleepButton.addEventListener('click', showSleepMenu)
+  sleepButton.addEventListener('click', () => showSleepMenu(sleepButton))
 
   /**
    * The picture, turned on and off where you are watching.
@@ -1462,6 +1465,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
       offKeys()
       offChange()
       offTick()
+      offNativeNext()
     },
   }
 }

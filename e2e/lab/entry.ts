@@ -13,6 +13,7 @@
 // product's own recovery, not a model of it.
 
 import { Engine } from '../../src/main/engine.ts'
+import { installNativeNext } from '../../src/main/native-controls.ts'
 import type { Track } from '../../src/main/parse.ts'
 import type { YtPlayer } from '../../src/main/player.ts'
 
@@ -489,6 +490,7 @@ function build(): Fake {
 // that swaps a player does not spend four of its own waiting for the answer.
 
 const engine = new Engine()
+installNativeNext(engine)
 if (pageFault !== 'no-player') build()
 const found = document.getElementById('movie_player') as YtPlayer | null
 // A watch page loads the video its address names before anyone asks it to.
@@ -543,6 +545,17 @@ const lab = {
   },
   next() {
     engine.next()
+  },
+  /** Presses the Next control drawn by YouTube over the video. */
+  nativeNext() {
+    const controls = document.createElement('div')
+    controls.id = 'player-control-container'
+    const button = document.createElement('button')
+    button.setAttribute('aria-label', '다음')
+    controls.appendChild(button)
+    document.body.appendChild(controls)
+    button.click()
+    controls.remove()
   },
   /** Lets YouTube's own queue take the player without telling our engine. */
   autoplay(id: string) {

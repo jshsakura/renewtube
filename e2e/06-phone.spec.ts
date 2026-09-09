@@ -203,6 +203,26 @@ test('it runs on m.youtube.com and lays itself out narrow', async () => {
     expect(actions.y + actions.height).toBeLessThanOrEqual(844)
     expect(actions.y).toBeGreaterThan(400)
 
+    // The direct phone actions replaced a hidden overflow button, but their
+    // first menus still used that hidden button's 0x0 box as the anchor.
+    // Measured on iOS 18.7 / Orion 26.4, 2026-09-10: the sleep menu appeared
+    // over the upper-left of the video. It opens immediately above the moon
+    // that was actually pressed, and carries its own title.
+    const sleep = ui.locator('.bar .sl')
+    const sleepBox = (await sleep.boundingBox())!
+    await sleep.click()
+    const sleepMenu = over.locator('.menu.touch')
+    await expect(sleepMenu).toBeVisible()
+    const sleepMenuBox = (await sleepMenu.boundingBox())!
+    // The emulated desktop-UA phone can scale its pre-viewport layout by a
+    // few CSS pixels; vertical adjacency is the hard invariant, while one
+    // half-target of horizontal drift is still visibly the same anchor.
+    expect(Math.abs(sleepMenuBox.x + sleepMenuBox.width - (sleepBox.x + sleepBox.width))).toBeLessThanOrEqual(24)
+    expect(sleepBox.y - (sleepMenuBox.y + sleepMenuBox.height)).toBeGreaterThanOrEqual(0)
+    expect(sleepBox.y - (sleepMenuBox.y + sleepMenuBox.height)).toBeLessThanOrEqual(12)
+    await expect(sleepMenu.locator('.menuTitle')).toHaveText('수면 예약')
+    await sleepMenu.locator('.menuClose').click()
+
   } finally {
     await context.close()
   }

@@ -329,9 +329,17 @@ body *:not(:has(#movie_player, #player-control-container, bottom-sheet-container
  * app sits below the player so the picture is never covered; the overlay sits
  * above it, because a menu that opens behind the video is a menu nobody can
  * read. Both hosts are inline under all: initial, and an inline box takes no
- * z-index — hence the display. */
+ * z-index — hence the explicit display on each. */
 ${HOST_TAG} { display: block !important; position: relative !important; z-index: 2147482000 !important; }
-${OVERLAY_TAG} { display: block !important; position: relative !important; z-index: 2147483100 !important; }
+/* The overlay owns no page-sized paint of its own. Pin its zero-sized origin
+ * to the viewport so WebKit cannot use the host's late position in the body
+ * as the containing origin for a fixed child in its shadow tree. Measured on
+ * iOS 18.7 / Orion 26.4, 2026-09-10: menus opened from history rows appeared
+ * at a screen corner instead of beside the pressed ellipsis. */
+${OVERLAY_TAG} {
+  display: block !important; position: fixed !important; left: 0 !important; top: 0 !important;
+  width: 0 !important; height: 0 !important; overflow: visible !important; z-index: 2147483100 !important;
+}
 `
 
 /**
