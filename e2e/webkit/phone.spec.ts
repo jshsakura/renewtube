@@ -2,8 +2,28 @@
 // tell us: whether a press starts sound here, whether the picture has a box,
 // and whether anything of YouTube's paints over ours.
 
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { app, inject } from './fixture.ts'
+
+async function expectPlayerLiftedOrParked(page: Page, transition: string): Promise<void> {
+  const state = await page.evaluate(() => {
+    const player = document.getElementById('movie_player')
+    if (!player) return null
+    const box = player.getBoundingClientRect()
+    return {
+      left: Math.round(box.left),
+      right: Math.round(box.right),
+      z: getComputedStyle(document.documentElement).getPropertyValue('--oc-z').trim(),
+    }
+  })
+  expect(state, `${transition}: the page still owns a player`).not.toBeNull()
+  if (state!.right > 0) {
+    expect(state!.z, `${transition}: an on-screen player is lifted above the app`).toBe('2147482100')
+  } else {
+    expect(state!.right, `${transition}: a parked player has no pixel on screen`).toBeLessThanOrEqual(0)
+    expect(state!.left, `${transition}: a parked player uses the far-left berth`).toBeLessThanOrEqual(-19000)
+  }
+}
 
 test('mounts on the mobile site, and nothing of YouTube paints over it', async ({ context, page }) => {
   await inject(context, page)
@@ -123,6 +143,58 @@ test('a track pressed on home plays here, and 영상 mode shows a picture', asyn
   await expect
     .poll(() => page.evaluate(() => Math.round(document.getElementById('movie_player')!.getBoundingClientRect().left)), { timeout: 10_000 })
     .toBeGreaterThanOrEqual(0)
+})
+
+test('the player is always lifted or parked through every phone transition', async ({ context, page }) => {
+  await inject(context, page)
+  await page.goto('https://m.youtube.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  const ui = app(page)
+  await expect(ui.locator('.app.narrow')).toBeVisible({ timeout: 60_000 })
+  await ui.locator('.tile:not([aria-hidden])').first().click()
+  await ui.locator('.rows .row:not([aria-hidden])').nth(1).locator('.meta').click()
+  await expect
+    .poll(() => page.evaluate(() => { const v = document.querySelector('video'); return v && !v.paused && v.currentTime > 0.5 }), { timeout: 25_000 })
+    .toBe(true)
+  expect(new URL(page.url()).pathname).toBe('/')
+
+  // Measured on real iOS WebKit, 2026-09-07: "사이드바 아래쪽이 가려
+  // 영상만큼만 보이고". Measured again 2026-09-08: "안보이지만 버튼은
+  // 눌린다". Both screens came from the same forbidden middle state: the
+  // player still had pixels on the phone after its z-index had gone below the
+  // app. Check after every press, not only after the matrix returns home.
+  await expectPlayerLiftedOrParked(page, 'track starts in sound-only mode')
+
+  await ui.locator('.bar .vid').click()
+  await expectPlayerLiftedOrParked(page, 'picture shown')
+  await ui.locator('.drawerToggle').click()
+  await expectPlayerLiftedOrParked(page, 'drawer opened over picture mode')
+  await ui.locator('.drawerClose').click()
+  await expectPlayerLiftedOrParked(page, 'drawer closed into picture mode')
+
+  await ui.locator('.bar .now').click()
+  await expectPlayerLiftedOrParked(page, 'player sheet opened in picture mode')
+  let title = await ui.locator('.bar .now .t').textContent()
+  await ui.locator('.ctl .nx').click()
+  await expectPlayerLiftedOrParked(page, 'next track pressed in picture sheet')
+  await expect(ui.locator('.bar .now .t')).not.toHaveText(title ?? '')
+  await ui.locator('.sheetClose').click()
+  await expectPlayerLiftedOrParked(page, 'player sheet closed in picture mode')
+
+  await ui.locator('.bar .vid').click()
+  await expectPlayerLiftedOrParked(page, 'sound-only mode restored')
+  await ui.locator('.drawerToggle').click()
+  await expectPlayerLiftedOrParked(page, 'drawer opened in sound-only mode')
+  await ui.locator('.drawerClose').click()
+  await expectPlayerLiftedOrParked(page, 'drawer closed in sound-only mode')
+
+  await ui.locator('.bar .now').click()
+  await expectPlayerLiftedOrParked(page, 'player sheet opened in sound-only mode')
+  title = await ui.locator('.bar .now .t').textContent()
+  await ui.locator('.ctl .nx').click()
+  await expectPlayerLiftedOrParked(page, 'next track pressed in sound-only sheet')
+  await expect(ui.locator('.bar .now .t')).not.toHaveText(title ?? '')
+  await ui.locator('.sheetClose').click()
+  await expectPlayerLiftedOrParked(page, 'player sheet closed in sound-only mode')
 })
 
 test('the settings sheet opens and the menu switches work here too', async ({ context, page }) => {

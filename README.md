@@ -88,6 +88,8 @@ of players built to fail that holds it in place, is in
 
 ## Development
 
+Before a release, run the [60-second real-phone check](docs/phone-checklist.md).
+
 ```bash
 npm install
 npm run build     # → dist/

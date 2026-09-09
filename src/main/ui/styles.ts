@@ -342,7 +342,7 @@ input { font: inherit; color: inherit; }
    nothing with. */
 .sideScroll {
   flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px;
-  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  overflow-y: auto; overscroll-behavior: contain;
   /* Out to the pane's edge and back in again, so the scrollbar rides the edge
      of the drawer instead of floating 12px inside it, while the rows stay
      exactly where they were. */
@@ -844,9 +844,8 @@ input { font: inherit; color: inherit; }
    900px window more than half the content panel was video and the list got a
    sliver. A player that shows one and a half rows is not showing a list. */
 .slot.stage {
-  left: calc(var(--side) + var(--gap) * 2); top: var(--gap);
+  left: calc(var(--side) + var(--gap) * 2); top: calc(var(--gap) - var(--stage-scroll, 0px));
   width: calc(100dvw - var(--side) - var(--gap) * 3); height: var(--stage-h);
-  transform: translateY(calc(-1 * var(--stage-scroll, 0px))); will-change: transform;
 }
 .app.has-stage .main { padding-top: calc(var(--stage-h) + 20px); }
 
@@ -856,16 +855,14 @@ input { font: inherit; color: inherit; }
    below both. Desktop only — a phone folds this back to the cinema stage. */
 .app.has-watch { --stage-h: min(calc((100vw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap)) * 0.5625), 86vh); }
 .slot.watch {
-  left: calc(var(--side) + var(--gap) * 2); top: var(--gap);
+  left: calc(var(--side) + var(--gap) * 2); top: calc(var(--gap) - var(--stage-scroll, 0px));
   width: calc(100dvw - var(--side) - var(--gap) * 3 - var(--upnext-w) - var(--gap));
   height: var(--stage-h);
-  transform: translateY(calc(-1 * var(--stage-scroll, 0px))); will-change: transform;
 }
 .app.has-watch .main { padding-top: calc(var(--stage-h) + 20px); }
 .upnext { display: none; }
 .app.has-watch .upnext {
-  position: fixed; top: var(--gap); height: var(--stage-h);
-  transform: translateY(calc(-1 * var(--stage-scroll, 0px))); will-change: transform;
+  position: fixed; top: calc(var(--gap) - var(--stage-scroll, 0px)); height: var(--stage-h);
   left: calc(100dvw - var(--upnext-w) - var(--gap)); width: var(--upnext-w);
   display: flex; flex-direction: column; z-index: 5;
   background: var(--card); border: 1px solid var(--glass-line);
@@ -1361,7 +1358,6 @@ input[type=range]::-moz-range-thumb {
   margin-left: -16px; margin-right: -16px;
   padding-left: 16px; padding-right: 16px;
   scroll-padding-left: 16px;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Sized like the app, and for the same reason: inset: 0 measures a box that
@@ -1378,14 +1374,12 @@ input[type=range]::-moz-range-thumb {
 /* ── The picture ────────────────────────────────────────────────────────── */
 .app.narrow .slot.corner { display: none; }
 .app.narrow.has-corner .main { padding-bottom: 24px; }
-/* The stage rides the list's scroll on a desktop. A phone never asked for
-   that — its scroll handler returns before it writes anything — but the
-   transform and the layer that carry it were still on the element, reading a
-   variable set on the document root that nothing here owns. Whatever that
-   variable last held, on whatever screen, moved the phone's picture and the
-   compositor layer under it. The stage is put back on the ground here: no
-   transform to inherit a stale number through, and no layer to keep. */
-.app.narrow .slot.stage { left: 0; width: 100dvw; top: var(--top-all); height: var(--stage-h); border-radius: 0; transform: none; will-change: auto; }
+/* The stage rides the list's scroll on a desktop. A phone never asks for that
+   — its scroll handler returns before it writes anything — so this rule puts
+   it at the header's own edge rather than reading the desktop offset. There
+   is no transform or compositor hint to clear: app-level surfaces never get
+   either one. */
+.app.narrow .slot.stage { left: 0; width: 100dvw; top: var(--top-all); height: var(--stage-h); border-radius: 0; }
 .app.narrow.has-stage .main { padding-top: calc(var(--stage-h) + 16px); }
 
 /* ── The bar, closed ──────────────────────────────────────────────────────
@@ -1774,26 +1768,11 @@ input[type=range]::-moz-range-thumb {
 .app.narrow .main .rows .row { padding: 8px 8px; }
 .app.narrow .main .rows .row.now { padding: 12px 10px; }
 
-/* ── Glass, with something behind it ─────────────────────────────────────── */
-/* Translucency is invisible over a flat ground. What the panes are glass over
-   is the artwork of what is playing, blurred past recognition into colour:
-   asked for on 2026-09-04, "글래스 모피즘 더 적극적으로". The layer sits under
-   every pane inside the app's own stacking context, and paints nothing while
-   nothing plays. One small picture, blurred, costs the phone almost nothing. */
-/* inset: 0 and clipped, never larger than the app: a layer that reached past
-   the screen widened the page, and a phone answers a page wider than itself
-   by zooming out (390 became 424). The blur's soft edge is scaled away
-   instead, and the scaling is clipped by the app. */
-.app { overflow: clip; }
-.app::before {
-  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: var(--art, none) center / cover no-repeat;
-  filter: blur(56px) saturate(150%); opacity: .42; transform: scale(1.3);
-  transition: opacity .6s ease;
-}
-.app.light::before { opacity: .3; }
-.app.narrow::before { display: none; }
-@media (prefers-reduced-transparency: reduce) { .app::before { display: none; } }
+/* The full-screen ground stays flat. Blurring the current artwork behind the
+   opaque panes added a transformed, filtered layer the size of the app; that
+   is exactly the kind of app-level compositor surface iOS WebKit has handed
+   back unpainted. The small playing-row artwork below keeps the colour without
+   putting the screen itself on a layer. */
 /* ── Dragging a row ───────────────────────────────────────────────────────
    Kept at the end of the file, with the other late blocks, so two branches
    editing this stylesheet meet in as few places as possible. */

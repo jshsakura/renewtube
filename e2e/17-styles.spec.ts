@@ -8,6 +8,24 @@
 import { expect, test } from '@playwright/test'
 import { STYLES } from '../src/main/ui/styles.ts'
 
+type CssRule = { selector: string; declarations: Array<{ property: string; value: string }> }
+
+function cssRules(css: string): CssRule[] {
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  return [...code.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((match) => {
+    const declarations = match[2]!
+      .split(';')
+      .map((text) => /^\s*([\w-]+)\s*:\s*(.*?)\s*$/.exec(text))
+      .filter((decl): decl is RegExpExecArray => decl !== null)
+      .map((decl) => ({ property: decl[1]!, value: decl[2]! }))
+    return match[1]!
+      .split(',')
+      .map((selector) => selector.trim())
+      .filter((selector) => selector !== '' && !selector.startsWith('@'))
+      .map((selector) => ({ selector, declarations }))
+  })
+}
+
 test('a view animation can never leave the pane invisible', () => {
   // The black screen, as a rule rather than a screenshot.
   //
@@ -63,4 +81,45 @@ test('nothing in the stylesheet blurs what is behind it', () => {
   for (const decl of [...code.matchAll(/--(?:pane|pop-solid):\s*([^;]+);/g)]) {
     expect(decl[1], 'a full-screen surface is opaque').not.toMatch(/rgba|hsla/)
   }
+})
+
+test('app-level surfaces never ask the compositor for a layer', () => {
+  // A player is either above these surfaces or parked off-screen. Giving one
+  // of the surfaces its own transform, filter or will-change creates a third
+  // compositing state between those two, and that is the state iOS WebKit did
+  // not paint: 2026-09-07, "사이드바 아래쪽이 가려 영상만큼만 보이고";
+  // 2026-09-08, "안보이지만 버튼은 눌린다".
+  const forbidden = new Set([
+    'will-change',
+    'filter',
+    '-webkit-filter',
+    'transform',
+    '-webkit-transform',
+    'backdrop-filter',
+    '-webkit-backdrop-filter',
+  ])
+  const isSurface = (selector: string) => {
+    const subject = selector.split(/[\s>+~]+/).at(-1) ?? ''
+    const classes = [...subject.matchAll(/\.([\w-]+)/g)].map((match) => match[1])
+    return classes.some((name) => ['app', 'side', 'main', 'slot', 'upnext', 'drawerScrim', 'scrim', 'modal'].includes(name!))
+      || (classes.includes('bar') && selector.includes('.sheet-open'))
+  }
+  const bad = cssRules(STYLES).flatMap(({ selector, declarations }) =>
+    isSurface(selector)
+      ? declarations.filter(({ property }) => forbidden.has(property)).map(({ property, value }) => `${selector} { ${property}: ${value} }`)
+      : [],
+  )
+  expect(bad, 'full-screen and pane surfaces stay in the app\'s one paint layer').toEqual([])
+
+  // Momentum scrolling is the one shadow-stylesheet exception, on the small
+  // horizontal row that needs it. The other deliberate exceptions live in a
+  // different, page-level sheet: shell.ts HIDE_CSS gives #movie_player its
+  // scroll transform and will-change only while the picture has a seat.
+  const momentumWhitelist = new Map([['.shelfRow', 'touch']])
+  const momentum = cssRules(STYLES).flatMap(({ selector, declarations }) =>
+    declarations
+      .filter(({ property }) => property === '-webkit-overflow-scrolling')
+      .map(({ value }) => ({ selector, value })),
+  )
+  expect(momentum).toEqual([...momentumWhitelist].map(([selector, value]) => ({ selector, value })))
 })
