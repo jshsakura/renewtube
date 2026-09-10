@@ -794,6 +794,11 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
       void exitPip(() => engine.resumeForBackground()).then(() => drawBar())
       return
     }
+    // A first-page PiP press is also the first explicit request to play. Tell
+    // the engine before WebKit consumes this gesture for the presentation
+    // change, so the arrival autoplay hold cannot pause the PiP on its next
+    // tick.
+    engine.resumeForPip()
     // enterPip reaches WebKit synchronously before its first await. Keeping
     // this call directly in the click handler is what preserves iOS's gesture
     // token; moving it through a timer makes the same API look unsupported.
@@ -810,6 +815,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         void exitPip(() => engine.resumeForBackground()).then(() => drawBar())
       } else {
         engine.setMode('video')
+        engine.resumeForPip()
         // The window opens a beat later, so the button's lit state is redrawn
         // when the request resolves, not only now.
         void enterPip(() => {

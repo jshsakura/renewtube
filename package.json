@@ -1,7 +1,7 @@
 {
   "name": "renewtube",
   "private": true,
-  "version": "0.24.18",
+  "version": "0.24.19",
   "type": "module",
   "description": "Flips youtube.com into a clean, simple player for both music and video: search, feeds, queue and playlist management over YouTube's own player.",
   "author": "OpenCourse",

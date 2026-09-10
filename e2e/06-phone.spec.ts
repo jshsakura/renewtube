@@ -263,7 +263,7 @@ test('a narrow screen never floats the picture in a corner', async () => {
   }
 })
 
-test('the phone bar opens and closes WebKit Picture in Picture', async () => {
+test('the first phone PiP press starts playback, stays open, and closes cleanly', async () => {
   const { context, page } = await phone()
   try {
     await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', {
@@ -284,7 +284,7 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
         webkitSupportsPresentationMode(mode: string): boolean
         webkitSetPresentationMode(mode: string): void
       }
-      let paused = false
+      let paused = true
       Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
       video.play = () => {
         paused = false
@@ -314,6 +314,13 @@ test('the phone bar opens and closes WebKit Picture in Picture', async () => {
     await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('picture-in-picture')
     await expect(button).toHaveClass(/on/)
     expect(await page.locator('video').getAttribute('disablePictureInPicture')).toBeNull()
+    // Measured on iPhone Safari/Orion, 2026-09-10: the first press could open
+    // a PiP window and then leave it spinning or paused. The arrival autoplay
+    // hold was still armed, so its next engine tick put down the play() made
+    // by the PiP gesture. Let at least one tick pass: this press is playback
+    // intent and the element must still be running afterwards.
+    await page.waitForTimeout(750)
+    await expect.poll(() => page.evaluate(() => !document.querySelector('video')!.paused)).toBe(true)
 
     const restoresBeforeExit = await page.evaluate(() => {
       const video = document.querySelector('video')!

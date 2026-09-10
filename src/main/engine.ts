@@ -1560,6 +1560,48 @@ export class Engine {
     this.tryStart()
   }
 
+  /**
+   * Treats the PiP button as the play gesture it plainly is.
+   *
+   * On a first visit we hold YouTube's autoplay down until the reader asks to
+   * hear something. PiP used to call play() only on the element, without
+   * releasing that hold or recording sound intent. The system window opened,
+   * then the next engine tick paused its video again: an endless spinner or a
+   * still PiP window (measured on iPhone Safari/Orion, 2026-09-10).
+   *
+   * This must run synchronously in the PiP button's handler. It spends the
+   * same user activation on the player and element, then enterPip spends it on
+   * the presentation change; no timer may sit between them.
+   */
+  resumeForPip(): void {
+    this.releaseHold()
+    const p = this.player
+    if (!p) {
+      this.load()
+      return
+    }
+    const named = this.namedVideo()
+    const expected = this.current?.videoId
+    // Never give a PiP window the automatic video that the bar already
+    // rejected. Hand the player its displayed track first.
+    if (named && expected && named !== expected) {
+      this.load()
+      return
+    }
+    this.wantPaused = false
+    this.wantsPlaying = true
+    this.wantsSound = true
+    this.needsGesture = false
+    this.unlockPlayback()
+    try {
+      p.playVideo()
+    } catch {
+      // The element route in tryStart is the second owner of this gesture.
+    }
+    this.syncMute()
+    this.tryStart()
+  }
+
   toggle(): void {
     this.releaseHold()
     const p = this.player
