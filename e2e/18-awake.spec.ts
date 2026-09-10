@@ -11,11 +11,12 @@ import { resolve } from 'node:path'
 import { keepAwake } from '../src/main/awake.ts'
 
 class HiddenDocument extends EventTarget {
-  get hidden(): boolean { return true }
-  get visibilityState(): string { return 'hidden' }
-  get webkitHidden(): boolean { return true }
-  get webkitVisibilityState(): string { return 'hidden' }
-  hasFocus(): boolean { return false }
+  hiddenNow = true
+  get hidden(): boolean { return this.hiddenNow }
+  get visibilityState(): string { return this.hiddenNow ? 'hidden' : 'visible' }
+  get webkitHidden(): boolean { return this.hiddenNow }
+  get webkitVisibilityState(): string { return this.hiddenNow ? 'hidden' : 'visible' }
+  hasFocus(): boolean { return !this.hiddenNow }
 }
 
 test('background lifecycle cannot pause YouTube while RenewTube is running', () => {
@@ -38,7 +39,13 @@ test('background lifecycle cannot pause YouTube while RenewTube is running', () 
   for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze']) doc.dispatchEvent(new Event(name))
   for (const name of ['visibilitychange', 'webkitvisibilitychange', 'freeze', 'pagehide']) win.dispatchEvent(new Event(name))
   expect(heard).toEqual([])
-  expect(nudges).toBeGreaterThan(0)
+  expect(nudges, 'one departure emits several lifecycle aliases but gets one nudge').toBe(1)
+
+  doc.hiddenNow = false
+  doc.dispatchEvent(new Event('visibilitychange'))
+  doc.hiddenNow = true
+  doc.dispatchEvent(new Event('visibilitychange'))
+  expect(nudges, 'a later departure gets its own nudge').toBe(2)
 
   restore()
   expect((doc as unknown as Document).hidden).toBe(true)

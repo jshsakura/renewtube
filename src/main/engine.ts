@@ -179,6 +179,21 @@ export class Engine {
    */
   private wantsSound = false
 
+  /**
+   * One late pause WebKit may append to an honest background transition.
+   *
+   * This is intentionally neither a retry loop nor a background keepalive.
+   * It belongs to one element and one track, expires after two seconds, and
+   * removes itself before restoring the first pause it sees. A later pause is
+   * therefore always the reader's.
+   */
+  private backgroundHandoff: {
+    el: HTMLVideoElement
+    id: string
+    pause: () => void
+    timer: number
+  } | undefined
+
   /** When the element's clock last moved, which is the only proof of progress. */
   private progressAt = 0
   /** Where the clock was at that moment. */
@@ -359,6 +374,7 @@ export class Engine {
   }
 
   detach(): void {
+    this.clearBackgroundHandoff()
     if (this.player) this.player.removeEventListener('onStateChange', this.onStateChange)
     // Handed back as it was found, with one deliberate exception below.
     // Wrapped because a player being torn down is allowed to have stopped
@@ -1555,9 +1571,50 @@ export class Engine {
   resumeForBackground(): void {
     if (!this.wantsSound || this.wantPaused || !this.current) return
     const el = this.videoEl()
-    if (!el || !el.paused || el.ended) return
-    this.wantsPlaying = true
-    this.tryStart()
+    if (!el || el.ended) return
+    const id = this.current.videoId
+    const restore = (): void => {
+      if (
+        !el.isConnected || el.ended || !el.paused || this.wantPaused ||
+        !this.wantsSound || this.current?.videoId !== id
+      ) return
+      const named = this.namedVideo()
+      if (named && named !== id) return
+      this.wantsPlaying = true
+      this.tryStart()
+    }
+
+    // The order already covered since 0.24.12: WebKit paused first and the
+    // lifecycle event arrived second. That pause is the whole hand-off, so it
+    // needs one immediate recovery and no lingering listener.
+    if (el.paused) {
+      this.clearBackgroundHandoff()
+      restore()
+      return
+    }
+
+    // Measured 2026-09-10: "나갈때간헐적으로 재생을 놓치네 중단되는데".
+    // In the intermittent order the honest hidden event arrives first and the
+    // pause follows after its callback. Arm one pause only; duplicate hidden,
+    // freeze and pagehide signals do not extend this deadline (keepAwake folds
+    // them into the same departure episode).
+    if (this.backgroundHandoff?.el === el && this.backgroundHandoff.id === id) return
+    this.clearBackgroundHandoff()
+    const pause = (): void => {
+      this.clearBackgroundHandoff()
+      restore()
+    }
+    el.addEventListener('pause', pause)
+    const timer = window.setTimeout(() => this.clearBackgroundHandoff(), 2000)
+    this.backgroundHandoff = { el, id, pause, timer }
+  }
+
+  private clearBackgroundHandoff(): void {
+    const handoff = this.backgroundHandoff
+    if (!handoff) return
+    handoff.el.removeEventListener('pause', handoff.pause)
+    window.clearTimeout(handoff.timer)
+    this.backgroundHandoff = undefined
   }
 
   /**
@@ -1603,6 +1660,7 @@ export class Engine {
   }
 
   toggle(): void {
+    this.clearBackgroundHandoff()
     this.releaseHold()
     const p = this.player
     if (!p) {

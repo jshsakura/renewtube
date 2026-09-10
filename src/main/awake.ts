@@ -44,6 +44,16 @@ export function keepAwake(onBackground: () => void = () => {}, source: Document 
   spoof('webkitVisibilityState', 'visible')
   spoof('hasFocus', () => true)
 
+  // WebKit commonly sends visibilitychange, webkitvisibilitychange, freeze
+  // and pagehide for one trip out. They are four descriptions of one hand-off,
+  // not four permissions to restart media. Reset only after the honest getter
+  // says the page came back (or pageshow announces it), so the recovery window
+  // cannot be extended by a late duplicate lifecycle event.
+  let backgrounded = false
+  const returned = (): void => {
+    backgrounded = false
+  }
+
   // Visibility events are targeted at document. Catch them at window as an
   // ancestor, before *every* document listener regardless of which script was
   // installed first; the document listener is the fallback for WebKit builds
@@ -60,7 +70,13 @@ export function keepAwake(onBackground: () => void = () => {}, source: Document 
     // YouTube tearing the player down; this nudge is the other half, handing
     // that still-loaded element back to Orion's enabled background playback.
     const departing = e.type === 'pagehide' || e.type === 'freeze' || realHidden?.() === true
-    if (departing) onBackground()
+    if (!departing) {
+      returned()
+      return
+    }
+    if (backgrounded) return
+    backgrounded = true
+    onBackground()
   }
   const documentEvents = ['visibilitychange', 'webkitvisibilitychange', 'freeze'] as const
   // blur is deliberately absent: touching the address bar and opening a popup
@@ -69,10 +85,12 @@ export function keepAwake(onBackground: () => void = () => {}, source: Document 
   const capture = { capture: true }
   for (const ev of documentEvents) source.addEventListener(ev, swallow, capture)
   for (const ev of windowEvents) host.addEventListener(ev, swallow, capture)
+  host.addEventListener('pageshow', returned, capture)
 
   return () => {
     for (const ev of documentEvents) source.removeEventListener(ev, swallow, capture)
     for (const ev of windowEvents) host.removeEventListener(ev, swallow, capture)
+    host.removeEventListener('pageshow', returned, capture)
     for (const key of removed) {
       try {
         delete doc[key]

@@ -412,3 +412,23 @@ test('a track iOS pauses while entering the background is handed back to backgro
   expect(v.path, 'background hand-off does not reload the player').toBe('/')
   expect(v.playingTitle).toBe('track 1')
 })
+
+test('a late WebKit pause during background hand-off is recovered only once', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page)
+  await expectSound(page, 10_000)
+  // Measured on iPhone Safari/Orion, 2026-09-10: "나갈때간헐적으로 재생을
+  // 놓치네 중단되는데". The hidden signal can arrive while sound still runs;
+  // WebKit pauses the element only after that callback has already returned.
+  await page.evaluate(() => (window as unknown as { LAB: { backgroundLate(): void } }).LAB.backgroundLate())
+  await page.waitForTimeout(1400)
+  await expectSound(page, 10_000)
+
+  // The hand-off must not become a general keep-playing switch. Once its short
+  // window has passed, a lock-screen, headset or PiP pause still belongs to
+  // the reader and stays paused.
+  await page.waitForTimeout(1000)
+  await page.evaluate(() => document.querySelector('video')?.pause())
+  await page.waitForTimeout(3000)
+  expect((await view(page)).sounding, 'a later deliberate pause is left alone').toBe(false)
+})
