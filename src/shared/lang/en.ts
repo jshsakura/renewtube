@@ -27,6 +27,7 @@ export const EN: Record<string, string> = {
   "좋아요": "Like",
   "관심 없음": "Not interested",
   "옵션": "Options",
+  "빠른 작업": "Quick actions",
   "채널 추천 안 함": "Don't recommend channel",
   "채널을 숨겼습니다.": "Channel hidden.",
   "숨긴 채널": "Hidden channels",

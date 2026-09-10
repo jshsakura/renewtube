@@ -441,55 +441,63 @@ function tile(opts: {
       !opts.cover && icon('note', 26),
       opts.badge && h('span', { class: 'badge' }, opts.badge),
       h('span', { class: 'play' }, icon('play', 20)),
-      // On the artwork, because a card has no spare row and this is the thing
-      // the product is for. Without it, filing a track was possible from a
-      // list and impossible from a card — which is every shelf on 둘러보기 and
-      // every screen in 영상 mode.
-      opts.quick &&
-        (() => {
-          const b = h(
-            'span',
-            // data-nav, or the arrow keys never reach it. It has a tabindex,
-            // which is what lights it up when the card takes focus — and then
-            // Enter activated the *card*, because remote.ts only moves to and
-            // only presses [data-nav]. So the + appeared to be the thing being
-            // pressed while the card underneath replaced the queue with the
-            // whole shelf. Measured 2026-09-04.
-            { class: 'tileAdd', role: 'button', tabindex: '0', 'data-nav': '', title: opts.quick!.title, 'aria-label': opts.quick!.title },
-            icon(opts.quick!.icon, 16),
-          )
-          const go = (ev: Event) => {
-            ev.stopPropagation()
-            ev.preventDefault()
-            opts.quick!.run()
-          }
-          b.addEventListener('click', go)
-          b.addEventListener('keydown', (ev) => {
-            if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') go(ev)
-          })
-          return b
-        })(),
-      // The options button, opposite the quick add. A ⋯ that opens a menu of
-      // the things a card could not offer before — play next, radio, and the
-      // curation the owner asked for: 관심 없음 and 채널 추천 안 함.
-      opts.menu &&
-        (() => {
-          const b = h(
-            'span',
-            { class: 'tileMenu', role: 'button', tabindex: '0', 'data-nav': '', title: t('옵션'), 'aria-label': t('옵션') },
-            icon('more', 16),
-          )
-          const openIt = (ev: Event) => {
-            ev.stopPropagation()
-            ev.preventDefault()
-            showMenu(rootOverlay, b, opts.menu!(), opts.title)
-          }
-          b.addEventListener('click', openIt)
-          b.addEventListener('keydown', (ev) => {
-            if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') openIt(ev)
-          })
-          return b
-        })(),
+      // A single action dock. The old pair lived in opposite corners as two
+      // unrelated 30px spots; on a 148px phone cover they were both cramped
+      // and visually ambiguous. Keeping them together gives each action a
+      // proper touch target without scattering controls over the poster.
+      (opts.quick || opts.menu) && h(
+        'span',
+        { class: 'tileActions', role: 'group', 'aria-label': t('빠른 작업') },
+        // On the artwork, because a card has no spare row and this is the thing
+        // the product is for. Without it, filing a track was possible from a
+        // list and impossible from a card — which is every shelf on 둘러보기 and
+        // every screen in 영상 mode.
+        opts.quick &&
+          (() => {
+            const b = h(
+              'span',
+              // data-nav, or the arrow keys never reach it. It has a tabindex,
+              // which is what lights it up when the card takes focus — and then
+              // Enter activated the *card*, because remote.ts only moves to and
+              // only presses [data-nav]. So the + appeared to be the thing being
+              // pressed while the card underneath replaced the queue with the
+              // whole shelf. Measured 2026-09-04.
+              { class: 'tileAdd', role: 'button', tabindex: '0', 'data-nav': '', title: opts.quick!.title, 'aria-label': opts.quick!.title },
+              icon(opts.quick!.icon, 17),
+            )
+            const go = (ev: Event) => {
+              ev.stopPropagation()
+              ev.preventDefault()
+              opts.quick!.run()
+            }
+            b.addEventListener('click', go)
+            b.addEventListener('keydown', (ev) => {
+              if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') go(ev)
+            })
+            return b
+          })(),
+        // The menu carries play-next, radio and curation actions that cannot
+        // all fit on a card. It shares the dock, but keeps its own focus and
+        // hit target so the two commands never become one vague button.
+        opts.menu &&
+          (() => {
+            const b = h(
+              'span',
+              { class: 'tileMenu', role: 'button', tabindex: '0', 'data-nav': '', title: t('옵션'), 'aria-label': t('옵션') },
+              icon('more', 17),
+            )
+            const openIt = (ev: Event) => {
+              ev.stopPropagation()
+              ev.preventDefault()
+              showMenu(rootOverlay, b, opts.menu!(), opts.title)
+            }
+            b.addEventListener('click', openIt)
+            b.addEventListener('keydown', (ev) => {
+              if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') openIt(ev)
+            })
+            return b
+          })(),
+      ),
     ),
     h('div', { class: 't', title: opts.title }, opts.title),
     h('div', { class: 's' }, opts.sub),

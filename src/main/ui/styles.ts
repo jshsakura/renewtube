@@ -291,7 +291,7 @@ input { font: inherit; color: inherit; }
    grey flashing under a moving hand reads as flicker, not feedback. */
 .nav:active, .row:active,
 .menu button:active, .modal .list button:active, .ctl button:active,
-.right button:active, .row .more:active, .row .quick:active, .drawerToggle:active, .btn.ghost:active {
+.row .more:active, .row .quick:active, .drawerToggle:active, .btn.ghost:active {
   background: var(--hover);
 }
 
@@ -706,32 +706,34 @@ input { font: inherit; color: inherit; }
   background: var(--card); color: var(--card-foreground); transition: background var(--ease);
 }
 .card:active, .tile:active, .card:focus-visible, .tile:focus-visible { background: var(--secondary-hover); }
-/* Top-right of the artwork, where a card's own play button is not. Always
-   visible on touch — a card has no hover to wait for. */
-.tileMenu {
-  position: absolute; left: 8px; top: 8px; z-index: 2;
-  width: 30px; height: 30px; border-radius: var(--radius-md);
-  display: inline-flex; align-items: center; justify-content: center;
-  background: oklch(0 0 0 / 55%); color: #fff; cursor: pointer;
-  opacity: 0; transition: opacity var(--ease), background var(--ease);
-}
-.card:hover .tileMenu, .tile:hover .tileMenu,
-.card:focus-within .tileMenu, .tile:focus-within .tileMenu { opacity: 1; }
-.tileMenu:hover { background: oklch(0 0 0 / 75%); }
-@media (hover: none) { .tileMenu { opacity: 1; } }
-.tileAdd {
+/* The two poster commands are one piece of furniture. They used to be 30px
+   spots in opposite corners, which made a phone cover look busier while each
+   target stayed too small. This dock leaves the poster legible, gives the
+   controls one clear home, and needs no divider line to explain the pair. */
+.tileActions {
   position: absolute; right: 8px; top: 8px; z-index: 2;
-  width: 30px; height: 30px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px;
+  border-radius: calc(var(--radius-md) + 3px);
+  background: transparent; color: rgba(255, 255, 255, .82);
+  opacity: 0; transition: opacity var(--ease);
+}
+.tileAdd, .tileMenu {
+  position: relative; width: 34px; height: 34px; border-radius: var(--radius-md);
   display: inline-flex; align-items: center; justify-content: center;
-  background: oklch(0 0 0 / 55%); color: #fff; cursor: pointer;
-  opacity: 0; transition: opacity var(--ease), background var(--ease);
+  background: transparent; color: inherit; cursor: pointer;
+  transition: color var(--ease), opacity var(--ease);
 }
-.card:hover .tileAdd, .tile:hover .tileAdd,
-.card:focus-within .tileAdd, .tile:focus-within .tileAdd { opacity: 1; }
+.tileActions svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .9)); }
+.card:hover .tileActions, .tile:hover .tileActions,
+.card:focus-within .tileActions, .tile:focus-within .tileActions { opacity: 1; }
 @media (hover: hover) {
-  .tileAdd:hover { background: oklch(0 0 0 / 75%); }
+  .tileAdd:hover, .tileMenu:hover { color: #fff; }
 }
-@media (hover: none) { .tileAdd { opacity: 1; } }
+.tileAdd:active, .tileMenu:active { color: #fff; opacity: .62; }
+@media (hover: none) {
+  .tileActions { opacity: 1; }
+  .tileAdd, .tileMenu { width: 40px; height: 40px; }
+}
 
 .card .cover, .tile .cover {
   position: relative; aspect-ratio: 1; border-radius: var(--radius-md);
@@ -1091,20 +1093,14 @@ input { font: inherit; color: inherit; }
    context that needs another size says so here, once. */
 .ctl button svg, .right button svg, .drawerToggle svg { width: 16px; height: 16px; }
 .ctl button:hover, .right button:hover, .drawerToggle:hover { color: var(--foreground); }
-/* On is said by brightness *and* by a chip. Brightness alone was the earlier
-   answer and it is the more elegant one, but it is grey-to-white on an 18px
-   glyph: on a phone, at arm's length, a shuffle that was on looked like a
-   shuffle that was off, and the press read as lost. The chip is the panel's
-   own secondary, not the accent, so the bar still has no colour in it. */
-/* **The transport keeps the brightness and loses the chip.**
-   Its buttons are circles, so a filled on-state is a grey disc sitting under a
-   glyph, and at a glance that reads as a button still held down rather than a
-   setting that is on. The toast already says which way the press went. The
-   rectangular controls on the right keep theirs: there the fill reads as a
-   panel that is open, which is what it means. */
+/* State belongs to the glyph, never to a background left behind after a tap.
+   A persistent chip made the phone's PiP and video buttons look held down;
+   video already swaps to its crossed glyph, and the remaining toggles become
+   foreground-bright when active. */
 .ctl button.on { color: var(--foreground); }
-.right button.on { color: var(--foreground); background: var(--secondary); }
+.right button.on { color: var(--foreground); background: transparent; }
 .ctl button.on:hover, .right button.on:hover { color: var(--foreground); }
+.right button:active { color: var(--foreground); background: transparent; opacity: .62; }
 /* The transport's play button is not the accent. It was the largest purple
    thing on the screen, next to purple sliders and purple badges on every card,
    and a colour used that often stops pointing at anything. It is the highest

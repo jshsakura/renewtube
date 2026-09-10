@@ -23,7 +23,7 @@ test('둘러보기 comes back as titled shelves, signed out', async () => {
   }
 })
 
-test('a card carries an options menu opposite the add button, with the curation choices', async () => {
+test('a card keeps add and options in one roomy action dock', async () => {
   const h = await open(WATCH)
   try {
     const ui = app(h.page)
@@ -33,9 +33,22 @@ test('a card carries an options menu opposite the add button, with the curation 
     // A track tile (not a playlist tile) is the one with a channel to hide.
     const card = ui.locator('.shelf .tile:not([aria-hidden]):has(.tileMenu)').first()
     await expect(card).toBeVisible({ timeout: 30_000 })
-    // Both corners: add on one, options on the other.
+    // One dock, two independently focusable commands. They used to float in
+    // opposite corners and read as unrelated marks on the poster.
+    await expect(card.locator('.tileActions')).toHaveCount(1)
     await expect(card.locator('.tileAdd')).toHaveCount(1)
     await expect(card.locator('.tileMenu')).toHaveCount(1)
+    await card.hover()
+    const cover = (await card.locator('.cover').boundingBox())!
+    const dock = (await card.locator('.tileActions').boundingBox())!
+    const add = (await card.locator('.tileAdd').boundingBox())!
+    const menuButton = (await card.locator('.tileMenu').boundingBox())!
+    expect(add.width).toBeGreaterThanOrEqual(34)
+    expect(menuButton.width).toBeGreaterThanOrEqual(34)
+    expect(Math.round(add.y)).toBe(Math.round(menuButton.y))
+    expect(menuButton.x).toBeGreaterThanOrEqual(add.x + add.width)
+    expect(dock.x + dock.width).toBeLessThanOrEqual(cover.x + cover.width)
+    expect(await card.locator('.tileActions').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)')
     await card.locator('.tileMenu').click()
     const menu = over.locator('.menu')
     await expect(menu).toBeVisible()

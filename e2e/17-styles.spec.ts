@@ -124,6 +124,22 @@ test('dialog hierarchy comes from surfaces and space, never divider lines', () =
   expect(suggestions?.declarations.some(({ property }) => property === 'border-bottom')).toBe(false)
 })
 
+test('poster and player actions change icons without leaving button backgrounds', () => {
+  // Measured 2026-09-11: both phone video controls kept dark chips behind
+  // their glyphs ("버튼에 자꾸 배경이 남아"). Active state is the crossed
+  // video glyph or brighter ink; neither a tap nor a poster action owns paint.
+  for (const selector of ['.right button.on', '.right button:active', '.tileActions', '.tileAdd', '.tileMenu']) {
+    const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
+    expect(rule, `${selector} exists`).toBeDefined()
+    expect(rule?.declarations).toContainEqual({ property: 'background', value: 'transparent' })
+  }
+  const tileTargets = cssRules(STYLES)
+    .filter(({ selector }) => selector === '.tileAdd' || selector === '.tileMenu')
+    .flatMap(({ declarations }) => declarations.filter(({ property }) => property === 'width').map(({ value }) => value))
+  expect(tileTargets).toContain('34px')
+  expect(tileTargets, 'touch gets a larger target than pointer input').toContain('40px')
+})
+
 test('app-level surfaces never ask the compositor for a layer', () => {
   // A player is either above these surfaces or parked off-screen. Giving one
   // of the surfaces its own transform, filter or will-change creates a third

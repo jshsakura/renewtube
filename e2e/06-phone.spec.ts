@@ -329,6 +329,7 @@ test('the phone PiP button starts playback, survives hand-offs, and retries a si
     await button.click()
     await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('picture-in-picture')
     await expect(button).toHaveClass(/on/)
+    await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     expect(await page.locator('video').getAttribute('disablePictureInPicture')).toBeNull()
     // Measured on iPhone Safari/Orion, 2026-09-10: the first press could open
     // a PiP window, finish loading, and only then receive WebKit's pause. Let
@@ -426,6 +427,7 @@ test('the picture never covers the header', async () => {
     // and across the top.
     await ui.locator('.bar .vid').click()
     await expect(ui.locator('.slot')).toHaveClass(/stage/)
+    await expect(ui.locator('.bar .vid')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
     const top = (await ui.locator('.top').boundingBox())!
     const stage = (await ui.locator('.slot').boundingBox())!
