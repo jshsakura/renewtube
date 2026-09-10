@@ -1137,21 +1137,31 @@ input[type=range]::-moz-range-thumb {
 .menu button:hover { color: var(--foreground); }
 .menu button:active { background: var(--hover); }
 .menu button:hover svg { color: var(--foreground); }
-.menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px -1px; }
+.menu hr {
+  /* A new group needs breathing room, not a rule drawn through the palette. */
+  height: 6px; margin: 0; border: 0;
+}
 
 /* The touch form: the same popover, sized for a thumb, with a name and a
    close on top. Scrolls inside itself past the visible height, which the
    script sets from the visual viewport. */
 .menu.touch {
   width: min(224px, calc(100dvw - 24px)); min-width: 0; max-width: calc(100dvw - 24px);
-  padding: 4px 6px 6px; overflow-y: auto; overscroll-behavior: contain;
+  padding: 6px; overflow-y: auto; overscroll-behavior: contain;
 }
 .menu.touch button { padding: 8px 10px; font-size: 13.5px; gap: 9px; min-width: 0; }
 .menu.touch button > :not(svg) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu.touch button svg { width: 17px; height: 17px; }
-.menu.touch hr { margin: 3px 6px; }
-.menuHead { display: flex; align-items: center; gap: 8px; padding: 2px 0 3px 10px; border-bottom: 1px solid var(--border); margin-bottom: 3px; }
-.menuTitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted-foreground); }
+.menu.touch hr { margin: 0 6px; }
+/* Measured 2026-09-10: the detail player's little menu read as one anonymous
+   list with a hairline stuck under its title. The title now owns a quiet inset
+   surface. Its edge comes from colour and air, never a divider. */
+.menuHead {
+  display: flex; align-items: center; gap: 8px; min-height: 38px;
+  padding: 3px 3px 3px 11px; margin: 0 0 5px;
+  background: var(--secondary); border-radius: calc(var(--radius-md) - 2px);
+}
+.menuTitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--popover-foreground); }
 /* Specific enough to beat the menu's own button rule, which would make this
    one full-width and push the name off the line. */
 .menu .menuClose { flex: none; width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); color: var(--muted-foreground); }
@@ -1169,6 +1179,7 @@ input[type=range]::-moz-range-thumb {
      "검색창도 엉망됐네 ... 뒤가 다비쳐"). Only the compact menu blurs. */
   background: var(--pop-solid); color: var(--popover-foreground);
   border: 1px solid var(--pop-line); border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  overflow: hidden;
 }
 /* The phone form: a sheet at the foot of the screen, which is what every menu
    on this device already is. It was the whole page, and that broke three ways
@@ -1180,31 +1191,34 @@ input[type=range]::-moz-range-thumb {
 .modal.full {
   width: 100dvw; max-width: none; height: auto; max-height: 76dvh;
   align-self: flex-end;
-  border: 0; border-top: 1px solid var(--pop-line);
+  border: 0;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   padding: 0 0 env(safe-area-inset-bottom);
+  box-shadow: 0 -18px 48px oklch(0 0 0 / 32%);
 }
-.modal.full .modalHead { border-bottom: 1px solid var(--border); }
-.modal.full .modalHead h3 { padding: 22px 4px 18px 20px; font-size: 19px; }
-.modal.full .modalClose { margin: 14px 8px 0 0; }
-.modal.full .list { padding: 0 12px 8px; }
+.modal.full .modalHead { margin: 10px 12px 8px; }
+.modal.full .modalHead h3 { font-size: 19px; }
+.modal.full .list { padding: 2px 12px 8px; }
 .modal.full .list button { padding: 14px 12px; font-size: 15px; }
 .modal.full .new { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); }
 .modal.full .new .btn { height: 44px; font-size: 15px; }
-/* Title and exit on one band, with a hairline under it: the same shape the
-   opened player wears, so a dialog reads as part of the product rather than as
-   a page that arrived from somewhere else. */
-.modalHead { display: flex; align-items: flex-start; gap: 8px; flex: none; }
-.modalHead h3 { flex: 1; min-width: 0; margin: 0; padding: 22px 4px 12px 22px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+/* Title and exit share an inset surface. The stronger tone and the space below
+   make a header immediately legible without drawing a rule across the card. */
+.modalHead {
+  display: flex; align-items: center; gap: 8px; flex: none; min-height: 52px;
+  margin: 8px 8px 6px; padding: 6px;
+  background: var(--secondary); border-radius: var(--radius-md);
+}
+.modalHead h3 { flex: 1; min-width: 0; margin: 0; padding: 0 8px 0 10px; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; }
 .modalClose {
-  flex: none; width: 40px; height: 40px; margin: 14px 12px 0 0;
+  flex: none; width: 40px; height: 40px; margin: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--radius-md); color: var(--muted-foreground);
+  border-radius: calc(var(--radius-md) - 2px); color: var(--muted-foreground); background: var(--pop-solid);
   transition: background var(--ease), color var(--ease);
 }
-.modalClose:hover { color: var(--foreground); }
+.modalClose:hover { color: var(--foreground); background: var(--secondary-hover); }
 .modalClose:active { background: var(--hover); }
-.modal .list { overflow-y: auto; padding: 0 14px 8px; }
+.modal .list { overflow-y: auto; padding: 2px 14px 8px; }
 .modal .list button {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
   padding: 8px 10px; border-radius: var(--radius-md); font-size: 14px;
@@ -1652,9 +1666,13 @@ input[type=range]::-moz-range-thumb {
 .modal.search { width: min(680px, calc(100dvw - 32px)); margin-top: 8dvh; max-height: 80dvh; box-shadow: 0 24px 64px oklch(0 0 0 / 45%), var(--shadow); }
 /* The field is the heading. Nothing above it says 검색, because the field
    already does, and the close button beside it is the one every dialog has. */
-.searchHead { display: flex; align-items: center; gap: 6px; padding: 14px 12px 0 16px; flex: none; }
+.searchHead {
+  display: flex; align-items: center; gap: 6px; padding: 6px; margin: 8px 8px 0; flex: none;
+  background: var(--secondary); border-radius: var(--radius-md);
+}
 .searchHead .searchbox { flex: 1; margin: 0; }
 .searchHead .modalClose { margin: 0; }
+.searchHead .searchbox { background: var(--pop-solid); border-color: transparent; }
 /* The two answers, each under its own small heading. */
 .searchMark { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 6px 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground); }
 .searchMark .sub { font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 400; }
@@ -1684,10 +1702,11 @@ input[type=range]::-moz-range-thumb {
    screen it was opened over is still there underneath. */
 .modal.search.full {
   align-self: flex-start; width: 100dvw; height: auto; max-height: 78dvh; margin: 0;
-  border: 0; border-bottom: 1px solid var(--pop-line);
+  border: 0;
   border-radius: 0 0 var(--radius-xl) var(--radius-xl); padding: env(safe-area-inset-top) 0 0;
+  box-shadow: 0 18px 48px oklch(0 0 0 / 32%);
 }
-.modal.search.full .searchHead { padding: 10px 6px 0 12px; }
+.modal.search.full .searchHead { padding: 6px; margin: 10px 12px 0; }
 .modal.search.full .searchBody { padding: 14px 12px calc(14px + env(safe-area-inset-bottom)); }
 .modal.search.full .searchAct { padding: 11px 12px; font-size: 15px; }
 /* ── The channel filter ───────────────────────────────────────────────────
@@ -1924,8 +1943,8 @@ input[type=range]::-moz-range-thumb {
    floating dropdown: the panel is already a floating thing, and a second
    layer over it would cast a shadow on a shadow. */
 .searchSuggest {
-  flex: none; border-bottom: 1px solid var(--pop-line);
-  padding: 8px 10px; margin-top: 10px; max-height: 44dvh; overflow-y: auto;
+  flex: none; padding: 8px 10px; margin: 8px 8px 0; max-height: 44dvh; overflow-y: auto;
+  background: var(--secondary); border-radius: var(--radius-md);
 }
 .suggestRow {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;

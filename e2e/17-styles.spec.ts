@@ -103,6 +103,27 @@ test('only a transient menu may blur what is behind it', () => {
   }
 })
 
+test('dialog hierarchy comes from surfaces and space, never divider lines', () => {
+  // Reported 2026-09-10: the detail player's little menu and the larger
+  // dialogs had a rule under their heading but still did not read as a head
+  // and a body. A distinct inset surface is the hierarchy; a separator line
+  // is not a substitute for it.
+  for (const selector of ['.menuHead', '.modalHead', '.searchHead']) {
+    const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
+    expect(rule, `${selector} exists`).toBeDefined()
+    expect(rule?.declarations).toContainEqual({ property: 'background', value: 'var(--secondary)' })
+    expect(rule?.declarations.some(({ property }) => property.startsWith('border-') && property.endsWith('bottom'))).toBe(false)
+  }
+
+  const divider = cssRules(STYLES).find((candidate) => candidate.selector === '.menu hr')
+  expect(divider?.declarations).toContainEqual({ property: 'border', value: '0' })
+  expect(divider?.declarations).toContainEqual({ property: 'height', value: '6px' })
+
+  const suggestions = cssRules(STYLES).find((candidate) => candidate.selector === '.searchSuggest')
+  expect(suggestions?.declarations).toContainEqual({ property: 'background', value: 'var(--secondary)' })
+  expect(suggestions?.declarations.some(({ property }) => property === 'border-bottom')).toBe(false)
+})
+
 test('app-level surfaces never ask the compositor for a layer', () => {
   // A player is either above these surfaces or parked off-screen. Giving one
   // of the surfaces its own transform, filter or will-change creates a third

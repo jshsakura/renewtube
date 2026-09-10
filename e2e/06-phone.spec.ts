@@ -138,6 +138,13 @@ test('it runs on m.youtube.com and lays itself out narrow', async () => {
     expect(Math.round(panel.width)).toBe(Math.round(app.width))
     const panelPaint = await over.locator('.modal.search').evaluate((el) => getComputedStyle(el).backgroundColor)
     expect(panelPaint, 'search is an opaque reading surface').not.toMatch(/^rgba\(/)
+    const searchHierarchy = await over.locator('.modal.search').evaluate((el) => {
+      const panel = getComputedStyle(el)
+      const head = getComputedStyle(el.querySelector<HTMLElement>('.searchHead')!)
+      return { panel: panel.backgroundColor, head: head.backgroundColor, divider: head.borderBottomWidth }
+    })
+    expect(searchHierarchy.head, 'the search head owns a distinct surface').not.toBe(searchHierarchy.panel)
+    expect(searchHierarchy.divider, 'the search head is not separated by a rule').toBe('0px')
     await over.locator('.modal.search .modalClose').click()
     await expect(over.locator('.modal.search')).toHaveCount(0)
 
@@ -225,6 +232,13 @@ test('it runs on m.youtube.com and lays itself out narrow', async () => {
     expect(sleepMenuBox.width).toBeLessThanOrEqual(240)
     expect(await sleepMenu.evaluate((el) => getComputedStyle(el).backdropFilter)).toContain('blur')
     await expect(sleepMenu.locator('.menuTitle')).toHaveText('수면 예약')
+    const menuHierarchy = await sleepMenu.evaluate((el) => {
+      const menu = getComputedStyle(el)
+      const head = getComputedStyle(el.querySelector<HTMLElement>('.menuHead')!)
+      return { menu: menu.backgroundColor, head: head.backgroundColor, divider: head.borderBottomWidth }
+    })
+    expect(menuHierarchy.head, 'the detail menu head owns a distinct surface').not.toBe(menuHierarchy.menu)
+    expect(menuHierarchy.divider, 'the detail menu head is not separated by a rule').toBe('0px')
     await sleepMenu.locator('.menuClose').click()
 
   } finally {
