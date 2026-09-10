@@ -93,6 +93,14 @@ test('only a transient menu may blur what is behind it', () => {
   for (const decl of [...code.matchAll(/--(?:pane|pop-solid):\s*([^;]+);/g)]) {
     expect(decl[1], 'a full-screen surface is opaque').not.toMatch(/rgba|hsla/)
   }
+
+  // Search, settings and confirmations are reading surfaces, not little
+  // palettes. They must use the opaque token even though they share this
+  // shadow root with the deliberately blurred menu.
+  for (const selector of ['.modal', '.toast']) {
+    const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
+    expect(rule?.declarations).toContainEqual({ property: 'background', value: 'var(--pop-solid)' })
+  }
 })
 
 test('app-level surfaces never ask the compositor for a layer', () => {

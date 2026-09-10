@@ -136,6 +136,8 @@ test('it runs on m.youtube.com and lays itself out narrow', async () => {
     const panel = (await over.locator('.modal.search').boundingBox())!
     expect(panel.y).toBe(0)
     expect(Math.round(panel.width)).toBe(Math.round(app.width))
+    const panelPaint = await over.locator('.modal.search').evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(panelPaint, 'search is an opaque reading surface').not.toMatch(/^rgba\(/)
     await over.locator('.modal.search .modalClose').click()
     await expect(over.locator('.modal.search')).toHaveCount(0)
 

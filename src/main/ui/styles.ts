@@ -114,7 +114,9 @@ export const STYLES = `
      four things in this UI that sit *over* the app, and they are the four
      the reader asked to be glass: translucent, blurred, with the light
      hairline that tells an edge from a shadow. */
-  --pop: rgba(30, 27, 23, .58);
+  /* Small menus can show a hint of place through their blur, not the whole
+     transport through their words. Large overlays use --pop-solid below. */
+  --pop: rgba(30, 27, 23, .88);
   --pop-line: rgba(236, 231, 223, .16);
   /* The panes themselves, one step less glassy than a popover: these carry the
      reading, and text on a heavy blur is text you squint at. Over the ground
@@ -209,7 +211,7 @@ export const STYLES = `
   --glass: #fbfaf6;
   --glass-strong: #fbfaf6;
   --glass-line: #ddd8cd;
-  --pop: rgba(251, 250, 246, .62);
+  --pop: rgba(251, 250, 246, .9);
   --pop-line: rgba(35, 32, 25, .14);
   --pane: #fbfaf6;
   --pane-blur: none;
@@ -1162,7 +1164,10 @@ input[type=range]::-moz-range-thumb {
 }
 .modal {
   width: min(420px, calc(100dvw - 32px)); max-height: 72dvh; display: flex; flex-direction: column;
-  background: var(--pop); color: var(--popover-foreground);
+  /* A search/settings surface carries whole lists and fields. Transparency
+     made the page below compete with every result (reported 2026-09-10:
+     "검색창도 엉망됐네 ... 뒤가 다비쳐"). Only the compact menu blurs. */
+  background: var(--pop-solid); color: var(--popover-foreground);
   border: 1px solid var(--pop-line); border-radius: var(--radius-lg); box-shadow: var(--shadow);
 }
 /* The phone form: a sheet at the foot of the screen, which is what every menu
@@ -1228,7 +1233,7 @@ input[type=range]::-moz-range-thumb {
   display: flex; align-items: center; gap: 10px;
   max-width: min(560px, calc(100dvw - 32px));
   padding: 12px 16px; border-radius: var(--radius-md); font-size: 14px;
-  background: var(--pop); color: var(--popover-foreground);
+  background: var(--pop-solid); color: var(--popover-foreground);
   border: 1px solid var(--pop-line); box-shadow: var(--shadow);
 }
 .toast > svg { flex: none; color: var(--primary); }
