@@ -285,7 +285,12 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
         webkitSetPresentationMode(mode: string): void
       }
       let paused = true
+      let clock = 10
       Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
+      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => clock })
+      window.setInterval(() => {
+        if (!paused) clock += 0.1
+      }, 100)
       video.play = () => {
         paused = false
         video.dataset.pipRestoreCalls = String(Number(video.dataset.pipRestoreCalls ?? '0') + 1)
@@ -300,9 +305,11 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
       video.webkitSetPresentationMode = (mode) => {
         video.webkitPresentationMode = mode
         video.dispatchEvent(new Event('webkitpresentationmodechanged'))
-        // The order missed by the first regression: in 소리만 the inline
-        // transition finishes first, then WebKit pauses in a later task.
-        if (mode === 'inline') window.setTimeout(() => video.pause(), 80)
+        // The orders seen on the device: WebKit announces either presentation
+        // transition first, then pauses the element in a later task. Entry was
+        // missing from the first regression, so PiP opened on a spinner and
+        // stayed paused even though the button press had started playback.
+        window.setTimeout(() => video.pause(), 1200)
       }
       video.setAttribute('disablePictureInPicture', '')
     })
@@ -315,12 +322,19 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
     await expect(button).toHaveClass(/on/)
     expect(await page.locator('video').getAttribute('disablePictureInPicture')).toBeNull()
     // Measured on iPhone Safari/Orion, 2026-09-10: the first press could open
-    // a PiP window and then leave it spinning or paused. The arrival autoplay
-    // hold was still armed, so its next engine tick put down the play() made
-    // by the PiP gesture. Let at least one tick pass: this press is playback
-    // intent and the element must still be running afterwards.
-    await page.waitForTimeout(750)
+    // a PiP window, finish loading, and only then receive WebKit's pause. Let
+    // that delayed pause and at least one engine tick pass: this transition is
+    // playback intent and the element must still be running afterwards.
+    await page.waitForTimeout(1350)
     await expect.poll(() => page.evaluate(() => !document.querySelector('video')!.paused)).toBe(true)
+
+    // The entry guard is deliberately short. Let it expire before checking
+    // the separate exit guard, or one handoff could accidentally mask the
+    // other in this test.
+    await page.waitForTimeout(1500)
+    await page.evaluate(() => document.querySelector('video')!.pause())
+    await page.waitForTimeout(750)
+    expect(await page.evaluate(() => document.querySelector('video')!.paused), 'a later PiP pause belongs to the reader').toBe(true)
 
     const restoresBeforeExit = await page.evaluate(() => {
       const video = document.querySelector('video')!

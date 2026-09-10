@@ -53,18 +53,47 @@ function allowPip(el: WebkitVideo): void {
  * only has fullscreen, the native player is still useful — its own PiP button
  * and the Home gesture are the system-supported hand-off.
  */
-export async function enterPip(onLeave: () => void): Promise<boolean> {
+export async function enterPip(onLeave: () => void, onTransitionPause?: () => void): Promise<boolean> {
   const el = video()
   if (!el) return false
   allowPip(el)
 
+  // iPhone WebKit can announce the PiP presentation, show its loading UI and
+  // only then pause the element. Once a track has been heard the engine must
+  // treat an ordinary pause as the reader's, so this short entry handoff is
+  // the only place that can distinguish WebKit's pause from a PiP control.
+  // Measured 2026-09-10: the pause landed after the loading transition and the
+  // system window stayed stopped. Outside these two seconds, a pause is still
+  // somebody's command and is never taken back.
+  let guarding = true
+  const restore = () => {
+    if (!guarding || !el.paused || el.ended) return
+    onTransitionPause?.()
+    void el.play().catch(() => {})
+  }
+  const onPause = () => restore()
+  const stopGuard = () => {
+    if (!guarding) return
+    guarding = false
+    el.removeEventListener('pause', onPause)
+  }
+  if (guarding) {
+    el.addEventListener('pause', onPause)
+    window.setTimeout(stopGuard, 2000)
+  }
+
   // A paused element is refused by WebKit. This is still inside the button's
   // gesture, and the press explicitly asked to watch it.
-  if (el.paused) void el.play().catch(() => {})
+  if (el.paused) restore()
 
   if (webkitPip(el) && el.webkitSetPresentationMode) {
     const changed = (): void => {
-      if (el.webkitPresentationMode === 'picture-in-picture') return
+      if (el.webkitPresentationMode === 'picture-in-picture') {
+        restore()
+        window.setTimeout(restore, 0)
+        return
+      }
+      stopGuard()
       el.removeEventListener('webkitpresentationmodechanged', changed)
       onLeave()
     }
@@ -81,7 +110,12 @@ export async function enterPip(onLeave: () => void): Promise<boolean> {
   if (typeof el.requestPictureInPicture === 'function' && document.pictureInPictureEnabled) {
     try {
       await el.requestPictureInPicture()
-      el.addEventListener('leavepictureinpicture', onLeave, { once: true })
+      el.addEventListener('leavepictureinpicture', () => {
+        stopGuard()
+        onLeave()
+      }, { once: true })
+      restore()
+      window.setTimeout(restore, 0)
       return true
     } catch {
       // The last iPhone route is its native fullscreen player.
@@ -91,11 +125,13 @@ export async function enterPip(onLeave: () => void): Promise<boolean> {
   if (typeof el.webkitEnterFullscreen === 'function') {
     try {
       el.webkitEnterFullscreen()
+      restore()
       return true
     } catch {
       /* unsupported for this media */
     }
   }
+  stopGuard()
   return false
 }
 

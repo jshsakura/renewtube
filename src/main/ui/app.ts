@@ -802,7 +802,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // enterPip reaches WebKit synchronously before its first await. Keeping
     // this call directly in the click handler is what preserves iOS's gesture
     // token; moving it through a timer makes the same API look unsupported.
-    void enterPip(() => drawBar()).then((opened) => {
+    void enterPip(() => drawBar(), () => engine.resumeForPip()).then((opened) => {
       if (!opened) toast(shell.overlay, t('이 브라우저에서 화면 속 화면을 열 수 없습니다.'), true)
       drawBar()
     })
@@ -818,10 +818,13 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         engine.resumeForPip()
         // The window opens a beat later, so the button's lit state is redrawn
         // when the request resolves, not only now.
-        void enterPip(() => {
-          engine.setMode('music')
-          drawBar()
-        }).then(() => drawBar())
+        void enterPip(
+          () => {
+            engine.setMode('music')
+            drawBar()
+          },
+          () => engine.resumeForPip(),
+        ).then(() => drawBar())
       }
       drawBar()
       return
