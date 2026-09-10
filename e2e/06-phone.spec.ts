@@ -263,7 +263,7 @@ test('a narrow screen never floats the picture in a corner', async () => {
   }
 })
 
-test('the first phone PiP press starts playback, stays open, and closes cleanly', async () => {
+test('the phone PiP button starts playback, survives hand-offs, and retries a silent miss', async () => {
   const { context, page } = await phone()
   try {
     await page.goto('https://m.youtube.com/watch?v=BzYnNdJhZQw', {
@@ -279,6 +279,10 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
     // on Chromium so the mobile button and, importantly, its synchronous call
     // from the tap are covered in the ordinary phone harness.
     await page.evaluate(() => {
+      // Keep this half on the legacy iPhone path. A separate assertion below
+      // turns the standard API on and verifies that modern WebKit gets it
+      // first, as its own media controls do.
+      Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: false })
       const video = document.querySelector('video') as HTMLVideoElement & {
         webkitPresentationMode: string
         webkitSupportsPresentationMode(mode: string): boolean
@@ -303,6 +307,11 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
       Object.defineProperty(video, 'webkitPresentationMode', { configurable: true, writable: true, value: 'inline' })
       video.webkitSupportsPresentationMode = (mode) => mode === 'picture-in-picture'
       video.webkitSetPresentationMode = (mode) => {
+        video.dataset.pipLegacyCalls = String(Number(video.dataset.pipLegacyCalls ?? '0') + 1)
+        if (mode === 'picture-in-picture' && video.dataset.pipIgnoreNext === 'true') {
+          delete video.dataset.pipIgnoreNext
+          return
+        }
         video.webkitPresentationMode = mode
         video.dispatchEvent(new Event('webkitpresentationmodechanged'))
         // The orders seen on the device: WebKit announces either presentation
@@ -347,6 +356,49 @@ test('the first phone PiP press starts playback, stays open, and closes cleanly'
     await expect(button).not.toHaveClass(/on/)
     await expect.poll(() => page.evaluate(() => Number(document.querySelector('video')!.dataset.pipRestoreCalls ?? '0'))).toBeGreaterThan(restoresBeforeExit)
     await expect.poll(() => page.evaluate(() => !document.querySelector('video')!.paused)).toBe(true)
+
+    // Measured on iPhone WebKit, 2026-09-10: "pip전환이 안될때가 종종있네
+    // 한번안되면 계속안되고". The prefixed setter returns void even when it
+    // ignores a request. That miss must time out cleanly instead of being
+    // reported as open or leaving a listener that poisons every later tap.
+    await page.evaluate(() => { document.querySelector('video')!.dataset.pipIgnoreNext = 'true' })
+    await button.click()
+    await expect(button).toBeDisabled()
+    await expect(button).toBeEnabled({ timeout: 5000 })
+    expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('inline')
+    await button.click()
+    await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('picture-in-picture')
+
+    // Modern WebKit's own controls use requestPictureInPicture when both APIs
+    // exist. Prefer that confirmed promise over the silent legacy setter.
+    await button.click()
+    await expect.poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitPresentationMode: string }).webkitPresentationMode)).toBe('inline')
+    const legacyBeforeStandard = await page.evaluate(() => Number(document.querySelector('video')!.dataset.pipLegacyCalls ?? '0'))
+    await page.evaluate(() => {
+      const video = document.querySelector('video')!
+      let active: Element | null = null
+      Object.defineProperty(document, 'pictureInPictureEnabled', { configurable: true, value: true })
+      Object.defineProperty(document, 'pictureInPictureElement', { configurable: true, get: () => active })
+      Object.defineProperty(video, 'requestPictureInPicture', {
+        configurable: true,
+        value: () => {
+          active = video
+          video.dataset.pipStandardCalls = String(Number(video.dataset.pipStandardCalls ?? '0') + 1)
+          return Promise.resolve({})
+        },
+      })
+      Object.defineProperty(document, 'exitPictureInPicture', {
+        configurable: true,
+        value: () => {
+          active = null
+          video.dispatchEvent(new Event('leavepictureinpicture'))
+          return Promise.resolve()
+        },
+      })
+    })
+    await button.click()
+    await expect.poll(() => page.evaluate(() => Number(document.querySelector('video')!.dataset.pipStandardCalls ?? '0'))).toBe(1)
+    expect(await page.evaluate(() => Number(document.querySelector('video')!.dataset.pipLegacyCalls ?? '0'))).toBe(legacyBeforeStandard)
   } finally {
     await context.close()
   }

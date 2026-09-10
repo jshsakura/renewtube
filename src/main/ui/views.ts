@@ -371,8 +371,8 @@ function skToolbar(...labels: string[]): HTMLElement {
 function skPlaylistRow(): HTMLElement {
   return h(
     'div',
-    { class: 'row plrow', 'aria-hidden': 'true' },
-    h('div', { class: 'thumb sk' }),
+    { class: 'playlistCard', 'aria-hidden': 'true' },
+    h('div', { class: 'playlistCover sk' }),
     h('div', { class: 'meta' },
       h('div', { class: 'sk', style: 'height: 10px; width: 54%; margin-bottom: 6px' }),
       h('div', { class: 'sk', style: 'height: 8px; width: 26%' })),
@@ -381,7 +381,7 @@ function skPlaylistRow(): HTMLElement {
 }
 
 function skPlaylistRows(n: number): HTMLElement {
-  return h('div', { class: 'rows' }, Array.from({ length: n }, () => skPlaylistRow()))
+  return h('div', { class: 'playlistGrid' }, Array.from({ length: n }, () => skPlaylistRow()))
 }
 
 /**
@@ -909,7 +909,7 @@ async function listFeed(ctx: Ctx, main: HTMLElement, title: string, id: api.Feed
 
 async function playlists(ctx: Ctx, main: HTMLElement): Promise<void> {
   const token = generation
-  replace(main, h('h2', null, t('내 재생목록')), skToolbar(t('새 재생목록')), skPlaylistRows(5))
+  replace(main, h('h2', null, t('내 재생목록')), skToolbar(t('새 재생목록')), skPlaylistRows(6))
   try {
     await ctx.refreshPlaylists()
     if (!current(token)) return
@@ -926,14 +926,83 @@ async function playlists(ctx: Ctx, main: HTMLElement): Promise<void> {
       icon('plus', 16),
       t('새 재생목록'),
     )
+    if (list.length === 0) {
+      replace(
+        main,
+        h('div', { class: 'playlistHead' },
+          h('div', { class: 'playlistHeading' },
+            h('span', { class: 'playlistMark' }, icon('library', 24)),
+            h('div', null, h('h2', null, t('내 재생목록')), h('div', { class: 'sub' }, tn('개', 0))),
+          ),
+          create,
+        ),
+        nothing(t('재생목록이 없습니다.'), 'library'),
+      )
+      return
+    }
+
+    type PlaylistSort = 'recent' | 'name' | 'name-desc'
+    const PAGE_SIZE = 12
+    let page = 0
+    let order: PlaylistSort = 'recent'
+    const grid = h('div', { class: 'playlistGrid' })
+    const pager = h('nav', { class: 'playlistPager', 'aria-label': t('페이지') })
+    const select = h(
+      'select',
+      { class: 'playlistSortSelect', 'aria-label': t('정렬') },
+      h('option', { value: 'recent' }, t('최근순')),
+      h('option', { value: 'name' }, t('이름순')),
+      h('option', { value: 'name-desc' }, t('이름 역순')),
+    )
+
+    const drawPage = (scroll = false): void => {
+      const ordered = list.slice()
+      if (order !== 'recent') {
+        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+        ordered.sort((a, b) => collator.compare(a.title, b.title) * (order === 'name-desc' ? -1 : 1))
+      }
+      const pages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE))
+      page = Math.max(0, Math.min(page, pages - 1))
+      replace(grid, ordered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((p) => card(ctx, p)))
+      replace(
+        pager,
+        h('button', {
+          class: 'btn ghost', 'data-nav': '', disabled: page === 0,
+          'aria-label': t('이전'),
+          onclick: () => { page -= 1; drawPage(true) },
+        }, icon('back', 15), t('이전')),
+        h('span', { class: 'playlistPage', 'aria-live': 'polite' }, `${page + 1} / ${pages}`),
+        h('button', {
+          class: 'btn ghost next', 'data-nav': '', disabled: page === pages - 1,
+          'aria-label': t('다음'),
+          onclick: () => { page += 1; drawPage(true) },
+        }, t('다음'), icon('back', 15)),
+      )
+      pager.hidden = pages === 1
+      if (scroll) main.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    select.addEventListener('change', () => {
+      order = select.value as PlaylistSort
+      page = 0
+      drawPage(true)
+    })
+
     replace(
       main,
-      h('h2', null, t('내 재생목록')),
-      h('div', { class: 'toolbar' }, create),
-      list.length === 0
-        ? nothing(t('재생목록이 없습니다.'), 'library')
-        : h('div', { class: 'rows' }, list.map((p) => card(ctx, p))),
+      h('div', { class: 'playlistHead' },
+        h('div', { class: 'playlistHeading' },
+          h('span', { class: 'playlistMark' }, icon('library', 24)),
+          h('div', null, h('h2', null, t('내 재생목록')), h('div', { class: 'sub' }, tn('개', list.length))),
+        ),
+        create,
+      ),
+      h('div', { class: 'playlistTools' },
+        h('label', { class: 'playlistSort' }, h('span', null, t('정렬')), select),
+      ),
+      grid,
+      pager,
     )
+    drawPage()
   } catch (err) {
     if (!current(token)) return
     replace(main, h('h2', null, t('내 재생목록')), h('div', { class: 'err' }, explain(err)))
@@ -941,27 +1010,24 @@ async function playlists(ctx: Ctx, main: HTMLElement): Promise<void> {
 }
 
 /**
- * One playlist, as a row.
- *
- * A wall of square covers looked handsome and was the wrong shape for the job:
- * playlists are where songs are put in and taken out, and that is list work.
- * Twelve of them fit on a screen this way instead of four.
+ * One playlist, as a compact library card. It keeps the density of a row, but
+ * gives the cover and title a surface of their own so a page of twelve reads
+ * as a collection rather than an undifferentiated stack.
  */
 function card(ctx: Ctx, p: Playlist): HTMLElement {
   return h(
-    'div',
+    'button',
     {
-      class: 'row plrow',
+      class: 'playlistCard',
       'data-nav': '',
-      tabindex: '0',
-      role: 'button',
+      title: p.title,
       onclick: () => ctx.go({ kind: 'playlist', id: p.id, title: p.title }),
     },
-    art('thumb', p.cover),
+    art('playlistCover', p.cover),
     h(
       'div',
       { class: 'meta' },
-      h('div', { class: 'title', title: p.title }, p.title),
+      h('div', { class: 'title' }, p.title),
       h('div', { class: 'by' }, p.subtitle),
     ),
     icon('back', 16),

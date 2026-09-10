@@ -421,13 +421,13 @@ test('a late WebKit pause during background hand-off is recovered only once', as
   // 놓치네 중단되는데". The hidden signal can arrive while sound still runs;
   // WebKit pauses the element only after that callback has already returned.
   await page.evaluate(() => (window as unknown as { LAB: { backgroundLate(): void } }).LAB.backgroundLate())
-  await page.waitForTimeout(1400)
+  await page.waitForTimeout(2600)
   await expectSound(page, 10_000)
 
   // The hand-off must not become a general keep-playing switch. Once its short
   // window has passed, a lock-screen, headset or PiP pause still belongs to
   // the reader and stays paused.
-  await page.waitForTimeout(1000)
+  await page.waitForTimeout(700)
   await page.evaluate(() => document.querySelector('video')?.pause())
   await page.waitForTimeout(3000)
   expect((await view(page)).sounding, 'a later deliberate pause is left alone').toBe(false)

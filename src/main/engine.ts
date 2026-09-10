@@ -183,7 +183,7 @@ export class Engine {
    * One late pause WebKit may append to an honest background transition.
    *
    * This is intentionally neither a retry loop nor a background keepalive.
-   * It belongs to one element and one track, expires after two seconds, and
+   * It belongs to one element and one track, expires after three seconds, and
    * removes itself before restoring the first pause it sees. A later pause is
    * therefore always the reader's.
    */
@@ -1605,7 +1605,7 @@ export class Engine {
       restore()
     }
     el.addEventListener('pause', pause)
-    const timer = window.setTimeout(() => this.clearBackgroundHandoff(), 2000)
+    const timer = window.setTimeout(() => this.clearBackgroundHandoff(), 3000)
     this.backgroundHandoff = { el, id, pause, timer }
   }
 

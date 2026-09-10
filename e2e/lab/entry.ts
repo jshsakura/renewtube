@@ -578,7 +578,7 @@ const lab = {
   /** The other WebKit order: hidden is announced before its pause arrives. */
   backgroundLate() {
     engine.resumeForBackground()
-    window.setTimeout(() => document.querySelector('video')?.pause(), 1200)
+    window.setTimeout(() => document.querySelector('video')?.pause(), 2400)
   },
   /**
    * Is the clock actually moving?

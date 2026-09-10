@@ -789,9 +789,20 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     title: t('화면 속 화면'),
     'aria-label': t('화면 속 화면'),
   }, icon('pip', 18))
+  let pipMoving = false
+  const finishPipMove = (): void => {
+    pipMoving = false
+    pipButton.disabled = false
+    pipButton.removeAttribute('aria-busy')
+    drawBar()
+  }
   pipButton.addEventListener('click', () => {
+    if (pipMoving) return
+    pipMoving = true
+    pipButton.disabled = true
+    pipButton.setAttribute('aria-busy', 'true')
     if (pipOpen()) {
-      void exitPip(() => engine.resumeForBackground()).then(() => drawBar())
+      void exitPip(() => engine.resumeForBackground()).finally(finishPipMove)
       return
     }
     // A first-page PiP press is also the first explicit request to play. Tell
@@ -803,9 +814,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // this call directly in the click handler is what preserves iOS's gesture
     // token; moving it through a timer makes the same API look unsupported.
     void enterPip(() => drawBar(), () => engine.resumeForPip()).then((opened) => {
-      if (!opened) toast(shell.overlay, t('이 브라우저에서 화면 속 화면을 열 수 없습니다.'), true)
-      drawBar()
-    })
+      if (!opened) toast(shell.overlay, t('화면 속 화면으로 전환하지 못했습니다. 잠시 후 다시 눌러 주세요.'), true)
+    }).finally(finishPipMove)
   })
   const videoButton = h('button', { class: 'vid', 'data-nav': '', title: t('화면 보기') }, icon('video', 18))
   videoButton.addEventListener('click', () => {

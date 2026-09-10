@@ -620,6 +620,77 @@ input { font: inherit; color: inherit; }
 .row:hover .quick, .row.now .quick, .row .quick:focus-visible { opacity: 1; }
 .row .more:hover, .row .quick:hover { color: var(--foreground); }
 
+/* ── Playlist library ─────────────────────────────────────────────────────
+   A collection, not a long settings list. The heading and cards are separate
+   filled surfaces with space between them; no divider lines are needed to
+   explain the hierarchy. Twelve compact cards make one deliberate page. */
+.playlistHead {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 18px; margin-bottom: 14px; border-radius: var(--radius-lg);
+  background: var(--card);
+}
+.playlistHeading { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.playlistHeading h2 { margin: 0 0 2px; }
+.playlistHeading .sub { color: var(--muted-foreground); font-size: 13px; }
+.playlistMark {
+  flex: none; width: 48px; height: 48px; display: grid; place-items: center;
+  border-radius: var(--radius-md); background: var(--secondary); color: var(--foreground);
+}
+.playlistTools { display: flex; justify-content: flex-end; margin: 0 0 14px; }
+.playlistSort {
+  display: inline-flex; align-items: center; gap: 10px; height: 36px;
+  padding: 0 6px 0 12px; border-radius: var(--radius-md);
+  background: var(--secondary); color: var(--muted-foreground); font-size: 13px;
+}
+.playlistSortSelect {
+  height: 28px; min-width: 92px; padding: 0 26px 0 9px;
+  border: 0; border-radius: calc(var(--radius-md) - 2px);
+  background: var(--card); color: var(--foreground); font: inherit; outline: 0;
+}
+.playlistSortSelect:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.playlistGrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 10px;
+}
+.playlistCard {
+  display: grid; grid-template-columns: 64px 1fr 20px; align-items: center; gap: 14px;
+  min-width: 0; min-height: 84px; padding: 10px; text-align: left;
+  border-radius: var(--radius-md); background: var(--card); color: var(--card-foreground);
+  transition: background var(--ease);
+}
+.playlistCard:hover, .playlistCard:focus-visible, .playlistCard:active { background: var(--secondary-hover); }
+.playlistCover {
+  position: relative; width: 64px; height: 64px; overflow: hidden;
+  border-radius: var(--radius-md); background: var(--secondary);
+}
+.playlistCover > img {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  object-fit: cover; border-radius: inherit; transition: opacity var(--ease);
+}
+.playlistCover.loading { animation: sk 1.2s ease-in-out infinite; box-shadow: inset 0 0 0 1px var(--border); }
+.playlistCover.loading > img { opacity: 0; }
+.playlistCard .meta { min-width: 0; }
+.playlistCard .title {
+  font-size: 14px; font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.playlistCard .by {
+  margin-top: 4px; color: var(--muted-foreground); font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.playlistCard > svg { justify-self: end; color: var(--muted-foreground); transform: rotate(180deg); }
+.playlistPager {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 20px 0 4px;
+}
+.playlistPager[hidden] { display: none; }
+.playlistPager .btn { min-width: 96px; }
+.playlistPager .next svg { transform: rotate(180deg); }
+.playlistPage {
+  min-width: 64px; text-align: center; color: var(--muted-foreground);
+  font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;
+}
+
 /* ── Artwork ───────────────────────────────────────────────────────────────
    One card, not a picture with a caption floating under it. The artwork is
    flush to the card's top edge with square corners of its own, and the title
@@ -1607,6 +1678,17 @@ input[type=range]::-moz-range-thumb {
   .tile { width: 40vw; max-width: 176px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 20px 12px; }
   .cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 12px; }
+  .playlistHead { padding: 14px; gap: 12px; }
+  .playlistMark { width: 42px; height: 42px; }
+  .playlistHead .btn { padding: 0 12px; }
+  .playlistTools { justify-content: stretch; }
+  .playlistSort { width: 100%; justify-content: space-between; }
+  .playlistSortSelect { flex: 1; max-width: 180px; }
+  .playlistGrid { grid-template-columns: 1fr; gap: 8px; }
+  .playlistCard { min-height: 78px; grid-template-columns: 58px 1fr 18px; padding: 10px; }
+  .playlistCover { width: 58px; height: 58px; }
+  .playlistPager { justify-content: space-between; }
+  .playlistPager .btn { min-width: 0; padding: 0 12px; }
   /* Side by side, not a big square with two lines stranded beneath it. The
      screen's name is in the header now, so what is left here is a cover and a
      couple of facts — which is a row. */
