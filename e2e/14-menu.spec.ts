@@ -123,9 +123,13 @@ test('a television shelf fills past its first five cards, and the page has more 
     // edge asks for the rest by itself.
     await expect.poll(() => cards.count(), { timeout: 20_000 }).toBeGreaterThan(5)
     const filled = await cards.count()
-    // Scrolling to the end asks for more still.
-    await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }))
-    await expect.poll(() => cards.count(), { timeout: 20_000 }).toBeGreaterThan(filled)
+    // Scrolling to the end asks for more still when the answer says there is
+    // more. Live sports rows also genuinely end at six or nine cards, so a
+    // fixed minimum would confuse a short row with a failed continuation.
+    if (await row.getAttribute('data-more') === 'true') {
+      await row.evaluate((el) => el.scrollTo({ left: el.scrollWidth }))
+      await expect.poll(() => cards.count(), { timeout: 20_000 }).toBeGreaterThan(filled)
+    }
     // And a card from the fed part plays the row it stands in.
     await h.page.screenshot({ path: process.env.SHOT_DIR ? `${process.env.SHOT_DIR}/sports.png` : 'test-results/sports.png' })
     // 더 보기 brings rows the first answer kept back.

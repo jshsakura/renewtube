@@ -1331,33 +1331,12 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // Stopped here, at the app, on the way up — before the document ever sees
   // it. shell.ts's panic key and the remote both listen in the capture phase,
   // which runs first, so neither loses anything.
-  // **The first tap is what makes playback possible on iOS.**
-  //
-  // WebKit lets script drive a media element only after a gesture has started
-  // that element at least once, and loadVideoById is asynchronous — by the
-  // time it has a source, the activation that asked for it is spent, so the
-  // track sits there loaded and paused. Playing and immediately pausing the
-  // element that is already there costs nothing visible and hands over the
-  // permission for the rest of the session. Once.
-  let unlocked = false
-  const unlockOnFirstTouch = () => {
-    if (unlocked) return
-    // Not while the arrival is being held: the element is paused on purpose,
-    // this would start it, and the press that follows a beat later would read
-    // it as playing and pause it again, so the press did nothing. Measured.
-    // The press itself unlocks through the engine, which does the same
-    // dance inside toggle() and load().
-    if (engine.arrivalHeld) return
-    unlocked = true
-    const el = document.querySelector('video')
-    if (!el || !el.paused) return
-    void Promise.resolve(el.play())
-      .then(() => el.pause())
-      .catch(() => {
-        unlocked = false
-      })
-  }
-  app.addEventListener('pointerdown', unlockOnFirstTouch, { capture: true })
+  // Playback permission belongs to playback commands. The engine spends the
+  // gesture inside play, toggle and PiP; a blanket first-pointer listener here
+  // also spent a press on ⋯, + or 더 보기 by starting YouTube's current video
+  // and pausing it again. On a fresh install that was visible as one unrelated
+  // buffering spin before the requested menu or page appeared (2026-09-11,
+  // "최초 설치후 바로 누르는 경우"). Non-playback controls must not touch media.
 
   const onKeyInField = (ev: KeyboardEvent) => {
     const el = ev.composedPath()[0] as HTMLElement | undefined

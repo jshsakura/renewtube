@@ -38,6 +38,9 @@ test('a card keeps add and options in one roomy action dock', async () => {
     await expect(card.locator('.tileActions')).toHaveCount(1)
     await expect(card.locator('.tileAdd')).toHaveCount(1)
     await expect(card.locator('.tileMenu')).toHaveCount(1)
+    expect(await card.evaluate((el) => el.tagName), 'the card must not contain interactive descendants inside a button').toBe('DIV')
+    await expect(card.locator('.tileAdd')).toHaveJSProperty('tagName', 'BUTTON')
+    await expect(card.locator('.tileMenu')).toHaveJSProperty('tagName', 'BUTTON')
     await card.hover()
     const cover = (await card.locator('.cover').boundingBox())!
     const dock = (await card.locator('.tileActions').boundingBox())!

@@ -6,6 +6,7 @@
 // are the ones that happen where an animation does *not* run.
 
 import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { STYLES } from '../src/main/ui/styles.ts'
 
 type CssRule = { selector: string; declarations: Array<{ property: string; value: string }> }
@@ -138,6 +139,15 @@ test('poster and player actions change icons without leaving button backgrounds'
     .flatMap(({ declarations }) => declarations.filter(({ property }) => property === 'width').map(({ value }) => value))
   expect(tileTargets).toContain('34px')
   expect(tileTargets, 'touch gets a larger target than pointer input').toContain('40px')
+})
+
+test('non-playback controls never prime the video on the first pointer', () => {
+  // Measured on a fresh iPhone install, 2026-09-11: pressing ⋯ or 더 보기
+  // could start and immediately pause YouTube's current media, showing one
+  // unrelated buffering spin before the requested action. Playback commands
+  // already spend their own gesture in Engine; the app surface owns none.
+  const app = readFileSync(new URL('../src/main/ui/app.ts', import.meta.url), 'utf8')
+  expect(app).not.toMatch(/app\.addEventListener\(['"]pointerdown['"]/)
 })
 
 test('app-level surfaces never ask the compositor for a layer', () => {

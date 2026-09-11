@@ -432,9 +432,15 @@ function tile(opts: {
   menu?: () => Array<Parameters<typeof showMenu>[2][number]>
   onOpen(): void
 }): HTMLElement {
-  return h(
-    'button',
-    { class: opts.square ? 'tile square' : 'tile', 'data-nav': '', onclick: opts.onOpen },
+  const card = h(
+    'div',
+    {
+      class: opts.square ? 'tile square' : 'tile',
+      'data-nav': '',
+      role: 'button',
+      tabindex: '0',
+      onclick: opts.onOpen,
+    },
     art(
       'cover',
       opts.cover,
@@ -455,14 +461,13 @@ function tile(opts: {
         opts.quick &&
           (() => {
             const b = h(
-              'span',
-              // data-nav, or the arrow keys never reach it. It has a tabindex,
-              // which is what lights it up when the card takes focus — and then
-              // Enter activated the *card*, because remote.ts only moves to and
-              // only presses [data-nav]. So the + appeared to be the thing being
-              // pressed while the card underneath replaced the queue with the
-              // whole shelf. Measured 2026-09-04.
-              { class: 'tileAdd', role: 'button', tabindex: '0', 'data-nav': '', title: opts.quick!.title, 'aria-label': opts.quick!.title },
+              'button',
+              // data-nav, or the arrow keys never reach it. This is a real
+              // button rather than an interactive span inside a button-shaped
+              // card: iOS WebKit occasionally retargeted that invalid nested
+              // interaction to the card and loaded the video instead of the
+              // action (2026-09-11, "더보기 누르면 로드를 못하거나").
+              { class: 'tileAdd', 'data-nav': '', title: opts.quick!.title, 'aria-label': opts.quick!.title },
               icon(opts.quick!.icon, 17),
             )
             const go = (ev: Event) => {
@@ -471,9 +476,6 @@ function tile(opts: {
               opts.quick!.run()
             }
             b.addEventListener('click', go)
-            b.addEventListener('keydown', (ev) => {
-              if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') go(ev)
-            })
             return b
           })(),
         // The menu carries play-next, radio and curation actions that cannot
@@ -482,8 +484,8 @@ function tile(opts: {
         opts.menu &&
           (() => {
             const b = h(
-              'span',
-              { class: 'tileMenu', role: 'button', tabindex: '0', 'data-nav': '', title: t('옵션'), 'aria-label': t('옵션') },
+              'button',
+              { class: 'tileMenu', 'data-nav': '', title: t('옵션'), 'aria-label': t('옵션') },
               icon('more', 17),
             )
             const openIt = (ev: Event) => {
@@ -492,9 +494,6 @@ function tile(opts: {
               showMenu(rootOverlay, b, opts.menu!(), opts.title)
             }
             b.addEventListener('click', openIt)
-            b.addEventListener('keydown', (ev) => {
-              if ((ev as KeyboardEvent).key === 'Enter' || (ev as KeyboardEvent).key === ' ') openIt(ev)
-            })
             return b
           })(),
       ),
@@ -502,6 +501,7 @@ function tile(opts: {
     h('div', { class: 't', title: opts.title }, opts.title),
     h('div', { class: 's' }, opts.sub),
   )
+  return card
 }
 
 function trackTile(ctx: Ctx, list: Track[], i: number): HTMLElement {
@@ -572,9 +572,13 @@ const SHELF_AHEAD_TILES = 3
  */
 function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): HTMLElement {
   const tracks = keep(shelf.tracks)
+  let token = shelf.continuation
   const row = h(
     'div',
-    { class: 'shelfRow' },
+    // Exposes the server's answer, not a visual state. The browser harness can
+    // then distinguish a row that failed to fetch from one YouTube genuinely
+    // ended after six or nine cards; both occur in the same live TV feed.
+    { class: 'shelfRow', 'data-more': token ? 'true' : 'false' },
     shelf.playlists.map((p) => playlistTile(ctx, p)),
     tracks.map((_, i) => trackTile(ctx, tracks, i)),
   )
@@ -583,7 +587,6 @@ function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): 
   makeDraggable(row)
   const section = h('section', { class: 'shelf' }, shelf.title && h('h3', null, shelf.title), row, ...shelfArrows(row))
 
-  let token = shelf.continuation
   let busy = false
   const nearEnd = () => {
     const tile = row.querySelector<HTMLElement>('.tile')
@@ -595,21 +598,27 @@ function shelfRow(ctx: Ctx, shelf: Shelf, client: api.Page['client'] = 'page'): 
     busy = true
     const waiting = Array.from({ length: 3 }, () => skTile())
     row.append(...waiting)
+    let fillAgain = false
     try {
       const next = await api.moreShelf(ctx.cfg, token, client)
       token = next.continuation
+      row.dataset.more = token ? 'true' : 'false'
       const from = tracks.length
       const fresh = keep(next.tracks)
       tracks.push(...fresh)
       for (const el of waiting) el.remove()
       row.append(...next.playlists.map((p) => playlistTile(ctx, p)), ...fresh.map((_, i) => trackTile(ctx, tracks, from + i)))
-      // Five more may still not reach the edge of a wide pane.
-      if (row.isConnected && nearEnd()) void feed()
+      // Five more may still not reach the edge of a wide pane. Record this
+      // while the geometry is current, then ask only after `busy` is cleared;
+      // calling feed() here used to return immediately on its own guard and a
+      // fresh wide screen stopped after exactly one continuation.
+      fillAgain = !!token && row.isConnected && nearEnd()
     } catch {
       // The row keeps what it has; the next scroll asks again.
       for (const el of waiting) el.remove()
     } finally {
       busy = false
+      if (fillAgain) void feed()
     }
   }
   if (token) {
@@ -698,7 +707,11 @@ function moreShelvesButton(ctx: Ctx, first: api.Page, box: HTMLElement, token: n
       page = next
       for (const el of waiting) el.remove()
       box.append(...next.shelves.map((shelf) => shelfRow(ctx, shelf, next.client)))
-      if (next.continuation && next.shelves.length > 0) box.after(more)
+      // A continuation is the server saying there is another page. Keep the
+      // control even when this particular response contains no recognised
+      // shelf; otherwise one sparse/changed response permanently strands the
+      // rest of the screen with no way to ask again.
+      if (next.continuation) box.after(more)
     } catch (err) {
       if (!current(token)) return
       ctx.say(explain(err), true)
