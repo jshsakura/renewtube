@@ -706,28 +706,27 @@ input { font: inherit; color: inherit; }
   background: var(--card); color: var(--card-foreground); transition: background var(--ease);
 }
 .card:active, .tile:active, .card:focus-visible, .tile:focus-visible { background: var(--secondary-hover); }
-/* The two poster commands are one piece of furniture. They used to be 30px
-   spots in opposite corners, which made a phone cover look busier while each
-   target stayed too small. This dock leaves the poster legible and gives the
-   controls one clear home. */
+/* One corner pair on the artwork: the running time at the bottom-left, the
+   poster's two commands at the bottom-right — where a player puts its
+   controls. The top edge stays the picture's (2026-09-11, "포스터 위로는
+   시인성 떨어지니"), and the decorative play glyph is gone: the card is the
+   play button. */
 .tileActions {
-  position: absolute; right: 8px; top: 8px; z-index: 2;
+  position: absolute; right: 8px; bottom: 8px; z-index: 2;
   display: inline-flex; align-items: center; gap: 2px;
   background: transparent;
   opacity: 0; transition: opacity var(--ease);
 }
-/* The same chip the play button wears, at the same size and the same 8px
-   inset. Ghost glyphs over bare artwork (2026-09-11) vanished on a bright
-   poster — a white outline on a white cover — and read as a different design
-   language from the play chip below them ("패딩도 재생버튼하고 너무 다르고").
-   The chip is the play button's own paint, so the two corners agree whatever
-   the artwork behind them. State still belongs to the glyph: hover lifts the
-   chip a step, a press dips it, neither leaves paint behind. */
+/* Small chips in the badge's own language: dark paint over the artwork,
+   whatever the artwork is. Ghost glyphs vanished on a bright cover, and a
+   40px pair talked over the poster (2026-09-11, "좀더 작게"); these sit at
+   the badge's scale, one size on every device. State belongs to the glyph —
+   hover lifts the chip a step, a press dips it, neither leaves paint. */
 .tileAdd, .tileMenu {
-  position: relative; width: 40px; height: 40px; border-radius: var(--radius-md);
+  position: relative; width: 30px; height: 30px; border-radius: var(--radius-md);
   display: inline-flex; align-items: center; justify-content: center;
   background: oklch(0 0 0 / 74%); color: oklch(0.985 0 0);
-  box-shadow: var(--shadow); cursor: pointer;
+  cursor: pointer;
   transition: opacity var(--ease), background var(--ease);
 }
 .card:hover .tileActions, .tile:hover .tileActions,
@@ -736,11 +735,9 @@ input { font: inherit; color: inherit; }
   .tileAdd:hover, .tileMenu:hover { background: oklch(0 0 0 / 88%); }
 }
 .tileAdd:active, .tileMenu:active { opacity: .62; }
-/* The play chip is 34px where a finger lands; the poster pair follow it, so
-   one size covers all three controls on a phone cover. */
+/* A finger cannot hover. On a touch screen the pair is simply there. */
 @media (hover: none) {
   .tileActions { opacity: 1; }
-  .tileAdd, .tileMenu { width: 34px; height: 34px; }
 }
 
 .card .cover, .tile .cover {
@@ -748,24 +745,8 @@ input { font: inherit; color: inherit; }
   background: var(--secondary) center/cover;
   display: flex; align-items: center; justify-content: center; color: var(--muted-foreground);
 }
-/* Sits on the artwork and appears on hover or focus, like every music client.
-   It is decoration only — the whole card is the button. */
-.cover .play {
-  /* 8px from the edge, the same as the badge opposite it and the same as the
-     add button above it. Three different insets read as three accidents. */
-  position: absolute; right: 8px; bottom: 8px;
-  width: 40px; height: 40px; border-radius: var(--radius-md);
-  display: flex; align-items: center; justify-content: center;
-  background: oklch(0 0 0 / 74%); color: oklch(0.985 0 0);
-  box-shadow: var(--shadow);
-  opacity: 0; transform: translateY(6px);
-  transition: opacity var(--ease), transform var(--ease);
-}
-.card:hover .play, .tile:hover .play,
-.card:focus-visible .play, .tile:focus-visible .play { opacity: 1; transform: none; }
 /* A finger cannot hover. On a touch screen the button is simply there. */
 @media (hover: none) {
-  .cover .play { opacity: 1; transform: none; width: 34px; height: 34px; }
   /* A row's buttons wait for a hover that a finger never gives. Half-visible
      is fine for a menu nobody has asked for; it is not fine for the button
      that puts a track in a playlist, which is meant to be pressed. */
@@ -1228,15 +1209,17 @@ input[type=range]::-moz-range-thumb {
 .menu.touch button > :not(svg) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu.touch button svg { width: 17px; height: 17px; }
 .menu.touch hr { margin: 0 6px; }
-/* Measured 2026-09-10: the detail player's little menu read as one anonymous
-   list with a hairline stuck under its title. The title now owns a quiet inset
-   surface. Its edge comes from colour and air, never a divider. */
+/* A plain head, not an inset one. The 2026-09-10 quiet surface — a filled
+   box holding its own close button — read inside a 224px sheet as a button
+   stuck inside the popup ("안쪽에 버튼처럼 이상하게"), and the name it was
+   meant to give presence got lost in the fill. The name is the sheet's own
+   ink at title weight, with air below it: the hierarchy is the space, never
+   a fill and never a divider. */
 .menuHead {
-  display: flex; align-items: center; gap: 8px; min-height: 38px;
-  padding: 3px 3px 3px 11px; margin: 0 0 5px;
-  background: var(--secondary); border-radius: calc(var(--radius-md) - 2px);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 8px 0 12px; margin: 0 0 4px;
 }
-.menuTitle { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--popover-foreground); }
+.menuTitle { flex: 1; min-width: 0; font-size: 14px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--popover-foreground); }
 /* Specific enough to beat the menu's own button rule, which would make this
    one full-width and push the name off the line. */
 .menu .menuClose { flex: none; width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); color: var(--muted-foreground); }

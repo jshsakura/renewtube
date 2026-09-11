@@ -446,7 +446,8 @@ function tile(opts: {
       opts.cover,
       !opts.cover && icon('note', 26),
       opts.badge && h('span', { class: 'badge' }, opts.badge),
-      h('span', { class: 'play' }, icon('play', 20)),
+      // No play glyph: the card is the play button, and a decorative one only
+      // restated it (2026-09-11, "재생버튼은 카드 누르면 되니 빼버리고").
       // A single action dock. The old pair lived in opposite corners as two
       // unrelated 30px spots; on a 148px phone cover they were both cramped
       // and visually ambiguous. Keeping them together gives each action a

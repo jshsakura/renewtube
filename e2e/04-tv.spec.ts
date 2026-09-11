@@ -46,8 +46,8 @@ test('a card keeps add and options in one roomy action dock', async () => {
     const dock = (await card.locator('.tileActions').boundingBox())!
     const add = (await card.locator('.tileAdd').boundingBox())!
     const menuButton = (await card.locator('.tileMenu').boundingBox())!
-    expect(add.width).toBeGreaterThanOrEqual(34)
-    expect(menuButton.width).toBeGreaterThanOrEqual(34)
+    expect(add.width).toBeGreaterThanOrEqual(30)
+    expect(menuButton.width).toBeGreaterThanOrEqual(30)
     expect(Math.round(add.y)).toBe(Math.round(menuButton.y))
     expect(menuButton.x).toBeGreaterThanOrEqual(add.x + add.width)
     expect(dock.x + dock.width).toBeLessThanOrEqual(cover.x + cover.width)

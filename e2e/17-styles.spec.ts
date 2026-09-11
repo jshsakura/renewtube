@@ -109,12 +109,22 @@ test('dialog hierarchy comes from surfaces and space, never divider lines', () =
   // dialogs had a rule under their heading but still did not read as a head
   // and a body. A distinct inset surface is the hierarchy; a separator line
   // is not a substitute for it.
-  for (const selector of ['.menuHead', '.modalHead', '.searchHead']) {
+  for (const selector of ['.modalHead', '.searchHead']) {
     const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
     expect(rule, `${selector} exists`).toBeDefined()
     expect(rule?.declarations).toContainEqual({ property: 'background', value: 'var(--secondary)' })
     expect(rule?.declarations.some(({ property }) => property.startsWith('border-') && property.endsWith('bottom'))).toBe(false)
   }
+
+  // The menu's head is the exception, re-reported 2026-09-11: inside a
+  // 224px sheet the inset surface — a filled box holding its own close
+  // button — read as a button stuck inside the popup ("안쪽에 버튼처럼
+  // 이상하게"), and hid the very name it was there to give. Its hierarchy is
+  // space and title weight alone; still no divider.
+  const menuHead = cssRules(STYLES).find(({ selector }) => selector === '.menuHead')
+  expect(menuHead, '.menuHead exists').toBeDefined()
+  expect(menuHead?.declarations.some(({ property, value }) => property === 'background' && value !== 'transparent'), 'the menu head carries no fill of its own').toBe(false)
+  expect(menuHead?.declarations.some(({ property }) => property.startsWith('border-') && property.endsWith('bottom'))).toBe(false)
 
   const divider = cssRules(STYLES).find((candidate) => candidate.selector === '.menu hr')
   expect(divider?.declarations).toContainEqual({ property: 'border', value: '0' })
@@ -125,32 +135,31 @@ test('dialog hierarchy comes from surfaces and space, never divider lines', () =
   expect(suggestions?.declarations.some(({ property }) => property === 'border-bottom')).toBe(false)
 })
 
-test('poster actions wear the play chip, player toggles never paint', () => {
-  // Two answers to two complaints, both 2026-09-11. The phone's player
-  // toggles kept dark chips after a tap ("버튼에 자꾸 배경이 남아"): there
-  // state belongs to the glyph and neither an on-state nor a press may paint.
-  // The poster pair went the other way the same day — stripped to ghost
-  // glyphs over bare artwork they vanished on a bright cover and matched
-  // nothing on the card ("안보여… 재생버튼하고 너무 다르고") — so ⋯ and +
-  // wear exactly the play button's chip: the same paint, and the same
-  // size in either input mode. The dock itself stays unpainted; the buttons
-  // own their paint, and the strip between them is the poster's.
+test('poster actions are the badge-scale chip, player toggles never paint', () => {
+  // Three answers on one card, all 2026-09-11. The phone's player toggles
+  // kept dark chips after a tap ("버튼에 자꾸 배경이 남아"): there state
+  // belongs to the glyph and neither an on-state nor a press may paint. The
+  // poster pair went the other way — ghost glyphs vanished on a bright cover
+  // — so ⋯ and + are small chips of the badge's own language, one size on
+  // every device ("좀더 작게"). The decorative play glyph is gone entirely:
+  // the card is the play button ("재생버튼은 카드 누르면 되니 빼버리고").
+  // The dock itself stays unpainted; the buttons own their paint, and the
+  // strip between them is the poster's.
   for (const selector of ['.right button.on', '.right button:active', '.tileActions']) {
     const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
     expect(rule, `${selector} exists`).toBeDefined()
     expect(rule?.declarations).toContainEqual({ property: 'background', value: 'transparent' })
   }
+  expect(cssRules(STYLES).some(({ selector }) => selector === '.cover .play'), 'the decorative play chip is gone').toBe(false)
   const paint = (selector: string) =>
     cssRules(STYLES).find((candidate) => candidate.selector === selector)
       ?.declarations.find(({ property }) => property === 'background')?.value
-  expect(paint('.cover .play'), 'the play chip is the reference').toBe('oklch(0 0 0 / 74%)')
   expect(paint('.tileAdd')).toBe(paint('.tileMenu'))
-  expect(paint('.tileAdd'), 'poster actions wear the play chip').toBe(paint('.cover .play'))
+  expect(paint('.tileAdd'), 'poster actions are chips of the badge language').toBe('oklch(0 0 0 / 74%)')
   const tileTargets = cssRules(STYLES)
     .filter(({ selector }) => selector === '.tileAdd' || selector === '.tileMenu')
     .flatMap(({ declarations }) => declarations.filter(({ property }) => property === 'width').map(({ value }) => value))
-  expect(tileTargets).toContain('40px')
-  expect(tileTargets, 'touch follows the play chip down to its compact size').toContain('34px')
+  expect(tileTargets, 'one compact size, no per-input override').toEqual(['30px', '30px'])
 })
 
 test('non-playback controls never prime the video on the first pointer', () => {
