@@ -10,7 +10,7 @@ import { art, h, icon, replace } from './dom.ts'
 import { makeDraggable, shelfArrows } from './drag.ts'
 import { explain, isSignedOut, type Ctx, type View } from './ctx.ts'
 import { confirm, showMenu, toast } from './overlay.ts'
-import { removeFromPlaylistNow, row, startRadio } from './rows.ts'
+import { removeFromPlaylistNow, row, shareTrack, startRadio } from './rows.ts'
 import { applyFilter, channelsOf, chooseChannels } from './channels.ts'
 import { makeSortable } from './sortable.ts'
 
@@ -535,6 +535,7 @@ function tileMenu(ctx: Ctx, track: Track): Array<Parameters<typeof showMenu>[2][
       ? [{ label: t('채널 추천 안 함'), icon: 'close' as const, onSelect: () => hideChannelAndRefresh(ctx, track) }]
       : []),
     '-',
+    { label: t('공유'), icon: 'share', onSelect: () => void shareTrack(ctx, track) },
     { label: t('유튜브에서 열기'), icon: 'external', onSelect: () => window.open(`https://www.youtube.com/watch?v=${track.videoId}`, '_blank') },
   ]
 }

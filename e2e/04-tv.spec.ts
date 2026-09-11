@@ -55,7 +55,7 @@ test('a card keeps add and options in one roomy action dock', async () => {
     await card.locator('.tileMenu').click()
     const menu = over.locator('.menu')
     await expect(menu).toBeVisible()
-    for (const label of ['다음에 재생', '이 곡으로 라디오', '관심 없음', '유튜브에서 열기']) {
+    for (const label of ['다음에 재생', '이 곡으로 라디오', '관심 없음', '공유', '유튜브에서 열기']) {
       await expect(menu.getByText(label, { exact: true })).toBeVisible()
     }
   } finally {

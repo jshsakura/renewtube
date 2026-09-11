@@ -47,6 +47,7 @@ export function row(ctx: Ctx, track: Track, opts: RowOptions): HTMLElement {
       { label: t('이 곡으로 라디오'), icon: 'radio', onSelect: () => void startRadio(ctx, track) },
       { label: t('재생목록에 추가'), icon: 'library', onSelect: () => void ctx.addToPlaylist([track]) },
       '-',
+      { label: t('공유'), icon: 'share', onSelect: () => void shareTrack(ctx, track) },
       { label: t('유튜브에서 열기'), icon: 'external', onSelect: () => window.open(`https://www.youtube.com/watch?v=${track.videoId}`, '_blank') },
       ...(opts.extra?.(el) ?? []),
     ], track.title)
@@ -249,6 +250,28 @@ export async function startRadio(ctx: Ctx, track: Track): Promise<void> {
     ctx.say(`${page.tracks.length}곡으로 라디오를 시작합니다.`)
   } catch (err) {
     ctx.say(explain(err), true)
+  }
+}
+
+/**
+ * Hands the track's YouTube link to the system share sheet where there is
+ * one, the clipboard everywhere else. `youtu.be` is the short form YouTube's
+ * own share button gives out. Shared by the row's and the card's ⋯ menus.
+ */
+export async function shareTrack(ctx: Ctx, track: Track): Promise<void> {
+  const url = `https://youtu.be/${track.videoId}`
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: track.title || track.videoId, url })
+      return
+    }
+    await navigator.clipboard.writeText(url)
+    ctx.say(t('링크를 복사했습니다.'))
+  } catch (err) {
+    // A dismissed share sheet is not a failure; only a share or copy that
+    // could not run is.
+    if ((err as DOMException)?.name === 'AbortError') return
+    ctx.say(t('공유하지 못했습니다.'), true)
   }
 }
 

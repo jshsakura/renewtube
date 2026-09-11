@@ -125,20 +125,32 @@ test('dialog hierarchy comes from surfaces and space, never divider lines', () =
   expect(suggestions?.declarations.some(({ property }) => property === 'border-bottom')).toBe(false)
 })
 
-test('poster and player actions change icons without leaving button backgrounds', () => {
-  // Measured 2026-09-11: both phone video controls kept dark chips behind
-  // their glyphs ("버튼에 자꾸 배경이 남아"). Active state is the crossed
-  // video glyph or brighter ink; neither a tap nor a poster action owns paint.
-  for (const selector of ['.right button.on', '.right button:active', '.tileActions', '.tileAdd', '.tileMenu']) {
+test('poster actions wear the play chip, player toggles never paint', () => {
+  // Two answers to two complaints, both 2026-09-11. The phone's player
+  // toggles kept dark chips after a tap ("버튼에 자꾸 배경이 남아"): there
+  // state belongs to the glyph and neither an on-state nor a press may paint.
+  // The poster pair went the other way the same day — stripped to ghost
+  // glyphs over bare artwork they vanished on a bright cover and matched
+  // nothing on the card ("안보여… 재생버튼하고 너무 다르고") — so ⋯ and +
+  // wear exactly the play button's chip: the same paint, and the same
+  // size in either input mode. The dock itself stays unpainted; the buttons
+  // own their paint, and the strip between them is the poster's.
+  for (const selector of ['.right button.on', '.right button:active', '.tileActions']) {
     const rule = cssRules(STYLES).find((candidate) => candidate.selector === selector)
     expect(rule, `${selector} exists`).toBeDefined()
     expect(rule?.declarations).toContainEqual({ property: 'background', value: 'transparent' })
   }
+  const paint = (selector: string) =>
+    cssRules(STYLES).find((candidate) => candidate.selector === selector)
+      ?.declarations.find(({ property }) => property === 'background')?.value
+  expect(paint('.cover .play'), 'the play chip is the reference').toBe('oklch(0 0 0 / 74%)')
+  expect(paint('.tileAdd')).toBe(paint('.tileMenu'))
+  expect(paint('.tileAdd'), 'poster actions wear the play chip').toBe(paint('.cover .play'))
   const tileTargets = cssRules(STYLES)
     .filter(({ selector }) => selector === '.tileAdd' || selector === '.tileMenu')
     .flatMap(({ declarations }) => declarations.filter(({ property }) => property === 'width').map(({ value }) => value))
-  expect(tileTargets).toContain('34px')
-  expect(tileTargets, 'touch gets a larger target than pointer input').toContain('40px')
+  expect(tileTargets).toContain('40px')
+  expect(tileTargets, 'touch follows the play chip down to its compact size').toContain('34px')
 })
 
 test('non-playback controls never prime the video on the first pointer', () => {

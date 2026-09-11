@@ -708,31 +708,39 @@ input { font: inherit; color: inherit; }
 .card:active, .tile:active, .card:focus-visible, .tile:focus-visible { background: var(--secondary-hover); }
 /* The two poster commands are one piece of furniture. They used to be 30px
    spots in opposite corners, which made a phone cover look busier while each
-   target stayed too small. This dock leaves the poster legible, gives the
-   controls one clear home, and needs no divider line to explain the pair. */
+   target stayed too small. This dock leaves the poster legible and gives the
+   controls one clear home. */
 .tileActions {
   position: absolute; right: 8px; top: 8px; z-index: 2;
-  display: inline-flex; align-items: center; gap: 2px; padding: 3px;
-  border-radius: calc(var(--radius-md) + 3px);
-  background: transparent; color: rgba(255, 255, 255, .82);
+  display: inline-flex; align-items: center; gap: 2px;
+  background: transparent;
   opacity: 0; transition: opacity var(--ease);
 }
+/* The same chip the play button wears, at the same size and the same 8px
+   inset. Ghost glyphs over bare artwork (2026-09-11) vanished on a bright
+   poster — a white outline on a white cover — and read as a different design
+   language from the play chip below them ("패딩도 재생버튼하고 너무 다르고").
+   The chip is the play button's own paint, so the two corners agree whatever
+   the artwork behind them. State still belongs to the glyph: hover lifts the
+   chip a step, a press dips it, neither leaves paint behind. */
 .tileAdd, .tileMenu {
-  position: relative; width: 34px; height: 34px; border-radius: var(--radius-md);
+  position: relative; width: 40px; height: 40px; border-radius: var(--radius-md);
   display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; color: inherit; cursor: pointer;
-  transition: color var(--ease), opacity var(--ease);
+  background: oklch(0 0 0 / 74%); color: oklch(0.985 0 0);
+  box-shadow: var(--shadow); cursor: pointer;
+  transition: opacity var(--ease), background var(--ease);
 }
-.tileActions svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .9)); }
 .card:hover .tileActions, .tile:hover .tileActions,
 .card:focus-within .tileActions, .tile:focus-within .tileActions { opacity: 1; }
 @media (hover: hover) {
-  .tileAdd:hover, .tileMenu:hover { color: #fff; }
+  .tileAdd:hover, .tileMenu:hover { background: oklch(0 0 0 / 88%); }
 }
-.tileAdd:active, .tileMenu:active { color: #fff; opacity: .62; }
+.tileAdd:active, .tileMenu:active { opacity: .62; }
+/* The play chip is 34px where a finger lands; the poster pair follow it, so
+   one size covers all three controls on a phone cover. */
 @media (hover: none) {
   .tileActions { opacity: 1; }
-  .tileAdd, .tileMenu { width: 40px; height: 40px; }
+  .tileAdd, .tileMenu { width: 34px; height: 34px; }
 }
 
 .card .cover, .tile .cover {
