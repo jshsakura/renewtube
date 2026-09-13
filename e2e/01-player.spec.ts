@@ -210,6 +210,48 @@ test('an arrival of our own is allowed to play', async () => {
   }
 })
 
+test('a reload mid-queue goes back to the track being heard', async () => {
+  // The address cannot follow in-page playback — YouTube watches its own URL
+  // and rebuilds the player when it moves — so a listening page is driven
+  // past its URL track by track, and a refresh landed on the page's first
+  // video however far the queue had gone (2026-09-11, "새로고침하면 항상
+  // 같은 페이지야"). The reload now goes to the track the queue is holding,
+  // marked as our own arrival so it resumes rather than sitting held.
+  const h = await open(WATCH)
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    // A track from a shelf: the player is on this page, so it plays in-page
+    // and the URL stays on the page's own video.
+    await ui.locator('.nav', { hasText: '음악' }).click()
+    const card = ui.locator('.shelf .tile:not([aria-hidden]):has(.tileMenu)').first()
+    await expect(card).toBeVisible({ timeout: 30_000 })
+    await card.click()
+    await expect.poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v ? !v.paused : null }), { timeout: 30_000 }).toBe(true)
+    const now = await h.page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('oc-easy-mode:state') ?? '{}') as { queue: Array<{ videoId: string }>, index: number }
+      return { current: s.index >= 0 ? s.queue[s.index]?.videoId : null }
+    })
+    expect(now.current).toBeTruthy()
+    expect(now.current).not.toBe('BzYnNdJhZQw')
+
+    // The harness's background answers musicMode: false and clears the quick
+    // flag while the app is up; set again for the load that follows.
+    await h.page.addInitScript(() => {
+      try {
+        localStorage.setItem('oc-easy-mode:on', '1')
+      } catch {}
+    })
+    await h.page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(h.page).toHaveURL(new RegExp(`/watch\\?v=${now.current}`), { timeout: 30_000 })
+    const ui2 = app(h.page)
+    await expect(ui2.locator('.app')).toBeVisible({ timeout: 60_000 })
+    await expect.poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v ? !v.paused && v.currentTime > 0 : null }), { timeout: 30_000 }).toBe(true)
+  } finally {
+    await h.close()
+  }
+})
+
 test('the mute button silences the video element, and hands the level back', async () => {
   const h = await open(WATCH)
   try {

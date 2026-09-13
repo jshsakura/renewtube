@@ -45,6 +45,14 @@ export interface Persisted {
   videoPref: 'stage' | 'watch'
   /** Where the UI was; restored so a reload lands in the same place. */
   view: string
+  /**
+   * When the listening state was last written. Written by save() itself, so
+   * it says the last time the engine actually changed something, and read
+   * only to tell a listening session a reload belongs to (engine.ts) from an
+   * old queue that must not hijack a watch page opened on purpose long
+   * after it went quiet.
+   */
+  savedAt: number
 }
 
 const KEY = 'oc-easy-mode:state'
@@ -242,6 +250,8 @@ export const DEFAULTS: Persisted = {
   videoPref: 'stage',
   // Not 'home', which YouTube leaves empty until it knows you.
   view: 'explore',
+  // A state never saved is not a session to go back to.
+  savedAt: 0,
 }
 
 /**
@@ -276,7 +286,9 @@ export function load(): Persisted {
 
 export function save(state: Persisted): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state))
+    // savedAt is written here rather than by the caller so it can only ever
+    // mean "the moment this state was last true".
+    localStorage.setItem(KEY, JSON.stringify({ ...state, savedAt: Date.now() }))
   } catch {
     // Quota or private mode: the queue is lost on reload, nothing worse.
   }

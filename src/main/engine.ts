@@ -506,6 +506,40 @@ export class Engine {
     // Late is not an arrival. A page that has been open for a while and then
     // gets the mode switched on was playing by the reader's choice.
     if (performance.now() > 15_000) return
+    // A reload of the page the queue outgrew goes to the queue (2026-09-11,
+    // "새로고침하면 항상 같은 페이지야"). The address cannot follow the music
+    // while it plays — YouTube watches its own URL and rebuilds the player
+    // when it moves; see stop() in index.ts for the measurement — so a page
+    // driven past its URL by loadVideoById keeps the address it was born
+    // with, and a refresh landed back on that first video however far the
+    // listening had gone. The fix is at the reload, not during play.
+    //
+    // Three gates keep it from yanking a page the reader chose: only a
+    // reload (a page opened on purpose navigated here, and is not ours to
+    // correct), only while the listening state is still warm — a queue that
+    // went quiet half a day ago must not take over a watch page opened since
+    // (savedAt, store.ts) — and a current track that can still play. The
+    // arrival mark is the one a pressed track leaves, so the destination
+    // resumes rather than sitting held.
+    const reloaded = (() => {
+      try {
+        const nav = performance.getEntriesByType('navigation')[0]
+        return nav instanceof PerformanceNavigationTiming && nav.type === 'reload'
+      } catch {
+        return false
+      }
+    })()
+    const warm = Date.now() - this.state.savedAt < 12 * 60 * 60 * 1000
+    if (
+      reloaded && warm && this.current && !this.current.unavailable
+      && this.current.videoId !== here
+    ) {
+      setQuickOn(true)
+      markArrival(this.current.videoId)
+      save(this.state)
+      location.assign(`/watch?v=${this.current.videoId}`)
+      return
+    }
     this.holding = true
     this.putDown()
   }
