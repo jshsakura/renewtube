@@ -7,7 +7,7 @@
 import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
-import { clearRescue, load, markArrival, remember, rescueRecord, save, saveRescue, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
+import { clearLeftAt, clearRescue, leftAt, load, markArrival, remember, rescueRecord, save, saveRescue, setLeftAt, setQuickOn, takeArrival, type LeftAt, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
 import { narrowNow } from './ui/device.ts'
 
 /**
@@ -470,6 +470,14 @@ export class Engine {
    * this whole hold is waiting for.
    */
   private holding = false
+  /**
+   * The place a resumed track comes back to, set only by an arrival that
+   * carries listening intent (ours, or a reload of the track already being
+   * heard) and spent exactly once, on the readiness of that same track.
+   */
+  private resumeAt: LeftAt | undefined
+  /** When the playing place was last written down, for the tick's throttle. */
+  private leftAtWrittenAt = 0
   private holdArrival(): void {
     if (Engine.arrivalSeen) return
     Engine.arrivalSeen = true
@@ -501,6 +509,11 @@ export class Engine {
       this.rescue = rescueRecord(here)
       this.wantsPlaying = true
       this.wantsSound = true
+      // A listen interrupted at 4:12 comes back at 4:12, not at 0:00 — but
+      // only for the track the place belongs to, and only once it is this
+      // track's own media that is ready (an advert shares the element).
+      const left = leftAt()
+      if (left && left.id === here && left.t >= 3) this.resumeAt = left
     }
     if (!here || ours === here || remembered) return
     // Late is not an arrival. A page that has been open for a while and then
@@ -632,7 +645,57 @@ export class Engine {
    * step with `wantsPlaying`, so it disarms itself.
    */
   private onElementReady = (): void => {
+    this.takeResume()
     if (this.wantsPlaying) this.tryStart()
+  }
+
+  /**
+   * Puts a resumed track back where it was left, once.
+   *
+   * Runs on the element's own readiness rather than from the arrival, because
+   * at arrival time the media for the track does not exist yet: a seek issued
+   * there was measured to be swallowed by the load that followed it. The
+   * player's named video stills guards the one case where readiness belongs
+   * to something else — an advert shares the element with the track it
+   * interrupts.
+   */
+  private takeResume(): void {
+    const r = this.resumeAt
+    if (!r) return
+    const named = this.namedVideo()
+    if (named !== undefined && named !== r.id) return
+    this.resumeAt = undefined
+    try {
+      this.player?.seekTo(r.t, true)
+      const el = this.videoEl()
+      if (el && el.currentTime < 1) el.currentTime = r.t
+    } catch {
+      /* a player that will not be seeked plays from zero; the listen continues */
+    }
+  }
+
+  /**
+   * Writes down where the current track is, for the reload that comes back.
+   *
+   * Public because the last honest write belongs to the page's departure
+   * (index.ts hands it to the same hook as the background hand-off): the
+   * five-second tick writes are the beats, and pagehide writes the final
+   * one exactly where the listener actually was.
+   */
+  writeLeftAt(): void {
+    const track = this.current
+    if (!track) return
+    const { current, duration } = this.position
+    // A track all but finished is not worth a place: resuming into its last
+    // breath plays seconds and moves on, which is the one resume that feels
+    // broken. It clears rather than keeps, so the next listen starts clean.
+    if (Number.isFinite(duration) && duration > 0 && current > duration - 10) {
+      clearLeftAt()
+      return
+    }
+    if (current < 3) return
+    this.leftAtWrittenAt = Date.now()
+    setLeftAt(track.videoId, current)
   }
   /**
    * Ask the paused, loaded track to play, both ways.
@@ -1247,6 +1310,9 @@ export class Engine {
       buffering,
       stalled,
     }
+    // The place in the track, on a lazy beat: pagehide writes the exact
+    // final one, so these only have to keep the place from being minutes old.
+    if (Date.now() - this.leftAtWrittenAt > 5000) this.writeLeftAt()
     for (const fn of this.tickListeners) fn()
   }
 

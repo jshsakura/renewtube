@@ -186,7 +186,13 @@ async function start(): Promise<void> {
     if (!cfg) throw new InnertubeError('ytcfg never appeared', 'shape')
 
     const engine = new Engine()
-    resumeBackground = () => engine.resumeForBackground()
+    // The honest-departure hook (pagehide among them) is also the last chance
+    // to write down where in the track the listener was: a reload reads it
+    // back on arrival and resumes at that second rather than from zero.
+    resumeBackground = () => {
+      engine.writeLeftAt()
+      engine.resumeForBackground()
+    }
     // YouTube's own interface language decides ours unless the reader has
     // said otherwise. Reading one language on the page and another over it is
     // worse than either.

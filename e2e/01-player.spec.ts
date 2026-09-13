@@ -234,6 +234,9 @@ test('a reload mid-queue goes back to the track being heard', async () => {
     })
     expect(now.current).toBeTruthy()
     expect(now.current).not.toBe('BzYnNdJhZQw')
+    // Far enough in that a resume from zero cannot pass for a resume.
+    await expect.poll(() => h.page.evaluate(() => document.querySelector('video')?.currentTime ?? 0), { timeout: 30_000 }).toBeGreaterThan(12)
+    const at = await h.page.evaluate(() => document.querySelector('video')!.currentTime)
 
     // The harness's background answers musicMode: false and clears the quick
     // flag while the app is up; set again for the load that follows.
@@ -246,7 +249,8 @@ test('a reload mid-queue goes back to the track being heard', async () => {
     await expect(h.page).toHaveURL(new RegExp(`/watch\\?v=${now.current}`), { timeout: 30_000 })
     const ui2 = app(h.page)
     await expect(ui2.locator('.app')).toBeVisible({ timeout: 60_000 })
-    await expect.poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v ? !v.paused && v.currentTime > 0 : null }), { timeout: 30_000 }).toBe(true)
+    // Back at the same second, not back at the start.
+    await expect.poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v ? !v.paused && v.currentTime : null }), { timeout: 30_000 }).toBeGreaterThan(at - 2)
   } finally {
     await h.close()
   }

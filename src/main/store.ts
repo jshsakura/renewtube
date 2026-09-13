@@ -423,6 +423,47 @@ export function takeArrival(): string | null {
   }
 }
 
+// ── Where a track was left ─────────────────────────────────────────────────
+//
+// The second-accurate place in the track the listener was at, kept apart from
+// the queue state because it moves a thousand times more often than the queue
+// ever does. Written by the engine as the track plays and once more on the way
+// out of the page; read only by an arrival that resumes the same track after
+// a reload.
+
+const POS_KEY = 'oc-easy-mode:left-at'
+
+/** The id guards it: a place is only ever applied to the track it came from. */
+export interface LeftAt { id: string; t: number }
+
+export function leftAt(): LeftAt | null {
+  try {
+    const raw = localStorage.getItem(POS_KEY)
+    if (!raw) return null
+    const got = JSON.parse(raw) as Partial<LeftAt>
+    if (typeof got.id !== 'string' || typeof got.t !== 'number' || !Number.isFinite(got.t)) return null
+    return { id: got.id, t: got.t }
+  } catch {
+    return null
+  }
+}
+
+export function setLeftAt(id: string, t: number): void {
+  try {
+    localStorage.setItem(POS_KEY, JSON.stringify({ id, t }))
+  } catch {
+    /* losing the place costs a restart of the track, nothing worse */
+  }
+}
+
+export function clearLeftAt(): void {
+  try {
+    localStorage.removeItem(POS_KEY)
+  } catch {
+    /* see setLeftAt */
+  }
+}
+
 // ── What has already been tried to make a track play ────────────────────────
 //
 // The recovery ladder spends one rung at a time, and one of those rungs is a
