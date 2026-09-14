@@ -29,8 +29,9 @@ jobs:
       # 유튜브의 그날 사정과 무관하게 매번 돌 수 있다. 이게 "누른 곡은 결국
       # 소리가 난다"를 지키는 자리다. docs/playback.md 를 본다.
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test e2e/19-playlists.spec.ts
       - run: node scripts/build-lab.mjs
+      - run: npx playwright test e2e/18-awake.spec.ts e2e/20-resume-position-store.spec.ts e2e/21-resume-position.spec.ts --retries=0
+      - run: npx playwright test e2e/19-playlists.spec.ts
       - run: npx playwright test e2e/16-playback.spec.ts
 
       # 빌드가 조용히 반쪽이 되는 것을 막는다. 확장은 파일 하나가 빠져도

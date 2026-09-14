@@ -1,4 +1,5 @@
 // The product: our UI, YouTube's player, one queue between them.
+// allow: SIZE_OK - live player scenarios share one persistent extension harness.
 
 import { expect, test } from '@playwright/test'
 import { app, open, searchFor } from './fixture.ts'
@@ -211,6 +212,7 @@ test('an arrival of our own is allowed to play', async () => {
 })
 
 test('a reload mid-queue goes back to the track being heard', async () => {
+  test.setTimeout(180_000)
   // The address cannot follow in-page playback — YouTube watches its own URL
   // and rebuilds the player when it moves — so a listening page is driven
   // past its URL track by track, and a refresh landed on the page's first
@@ -234,23 +236,82 @@ test('a reload mid-queue goes back to the track being heard', async () => {
     })
     expect(now.current).toBeTruthy()
     expect(now.current).not.toBe('BzYnNdJhZQw')
-    // Far enough in that a resume from zero cannot pass for a resume.
-    await expect.poll(() => h.page.evaluate(() => document.querySelector('video')?.currentTime ?? 0), { timeout: 30_000 }).toBeGreaterThan(12)
-    const at = await h.page.evaluate(() => document.querySelector('video')!.currentTime)
+    // Far enough into the selected content that eight seconds of natural
+    // playback from zero cannot pass for a resume within ten seconds of this
+    // place. An advert shares this clock, so identity and absent ad chrome are
+    // part of the observation rather than assumptions around it.
+    await expect.poll(() => h.page.evaluate((expected) => {
+      const player = document.getElementById('movie_player') as (HTMLElement & { getVideoData?: () => { video_id?: string } }) | null
+      const video = document.querySelector('video')
+      const state = JSON.parse(localStorage.getItem('oc-easy-mode:state') ?? '{}') as { queue?: Array<{ videoId?: string }>; index?: number }
+      const queueId = typeof state.index === 'number' && state.index >= 0 ? state.queue?.[state.index]?.videoId : undefined
+      const advert = player?.classList.contains('ad-showing') === true
+        || player?.classList.contains('ad-interrupting') === true
+        || document.querySelector('ytm-video-ad-renderer, .ytp-ad-player-overlay') !== null
+        || (document.querySelector('.video-ads')?.childElementCount ?? 0) > 0
+      return queueId === expected && player?.getVideoData?.().video_id === expected
+        && !advert && video !== null && !video.paused && !video.ended && video.currentTime > 30
+    }, now.current), { timeout: 120_000 }).toBe(true)
+    const source = await h.page.evaluate(() => {
+      const player = document.getElementById('movie_player') as (HTMLElement & { getVideoData?: () => { video_id?: string } }) | null
+      const video = document.querySelector('video')
+      const advert = player?.classList.contains('ad-showing') === true
+        || player?.classList.contains('ad-interrupting') === true
+        || document.querySelector('ytm-video-ad-renderer, .ytp-ad-player-overlay') !== null
+        || (document.querySelector('.video-ads')?.childElementCount ?? 0) > 0
+      return { currentTime: video?.currentTime ?? 0, advert, playerNamedId: player?.getVideoData?.().video_id ?? null }
+    })
+    const at = source.currentTime
 
     // The harness's background answers musicMode: false and clears the quick
-    // flag while the app is up; set again for the load that follows.
+    // flag while the app is up; set again for the load that follows. This also
+    // gives every later document its own resume deadline baseline.
     await h.page.addInitScript(() => {
-      try {
-        localStorage.setItem('oc-easy-mode:on', '1')
-      } catch {}
+      Object.defineProperty(window, '__resumeDocumentStartedAt', { value: performance.now() })
+      try { localStorage.setItem('oc-easy-mode:on', '1') } catch { return }
     })
     await h.page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(h.page).toHaveURL(new RegExp(`/watch\\?v=${now.current}`), { timeout: 30_000 })
-    const ui2 = app(h.page)
-    await expect(ui2.locator('.app')).toBeVisible({ timeout: 60_000 })
-    // Back at the same second, not back at the start.
-    await expect.poll(() => h.page.evaluate(() => { const v = document.querySelector('video'); return v ? !v.paused && v.currentTime : null }), { timeout: 30_000 }).toBeGreaterThan(at - 2)
+    try {
+      await expect(h.page).toHaveURL(new RegExp(`/watch\\?v=${now.current}`), { timeout: 30_000 })
+      const resumed = await h.page.evaluate(async ({ minimum, deadline }) => {
+        const startedAt = (window as typeof window & { __resumeDocumentStartedAt: number }).__resumeDocumentStartedAt
+        let video = document.querySelector('video')
+        while (performance.now() - startedAt < deadline && (!video || video.paused || video.currentTime < minimum)) {
+          video = await new Promise<HTMLVideoElement | null>((resolve) => requestAnimationFrame(() => resolve(document.querySelector('video'))))
+        }
+        return { currentTime: video?.currentTime ?? 0, elapsed: performance.now() - startedAt, playing: video !== null && !video.paused }
+      }, { minimum: at - 10, deadline: 8000 })
+      expect(resumed.elapsed, 'the resumed track missed the final document deadline').toBeLessThan(8000)
+      expect(resumed.currentTime, 'the reload restarted the track instead of resuming it').toBeGreaterThanOrEqual(at - 10)
+      expect(resumed.playing, 'the resumed track is not actively playing').toBe(true)
+      const target = await h.page.evaluate(() => {
+        const player = document.getElementById('movie_player') as (HTMLElement & { getVideoData?: () => { video_id?: string } }) | null
+        const targetAd = player?.classList.contains('ad-showing') === true
+          || player?.classList.contains('ad-interrupting') === true
+          || document.querySelector('ytm-video-ad-renderer, .ytp-ad-player-overlay') !== null
+          || (document.querySelector('.video-ads')?.childElementCount ?? 0) > 0
+        return { url: location.href, playerNamedId: player?.getVideoData?.().video_id ?? null, targetAd }
+      })
+      await test.info().attach('reload-resume-observation', {
+        body: JSON.stringify({ at, sourceAd: source.advert, sourcePlayerNamedId: source.playerNamedId, resumedTime: resumed.currentTime, targetElapsed: resumed.elapsed, ...target }, null, 2),
+        contentType: 'application/json',
+      })
+      await expect(app(h.page).locator('.app')).toBeVisible({ timeout: 60_000 })
+    } catch (error) {
+      const diagnostic = await h.page.evaluate(({ sourceTime, sourceAd }) => {
+        const startedAt = (window as typeof window & { __resumeDocumentStartedAt?: number }).__resumeDocumentStartedAt
+        const player = document.getElementById('movie_player') as (HTMLElement & { getVideoData?: () => { video_id?: string } }) | null
+        let playerNamedId: string | null = null
+        try { playerNamedId = player?.getVideoData?.().video_id ?? null } catch { playerNamedId = null }
+        const targetAd = player?.classList.contains('ad-showing') === true
+          || player?.classList.contains('ad-interrupting') === true
+          || document.querySelector('ytm-video-ad-renderer, .ytp-ad-player-overlay') !== null
+          || (document.querySelector('.video-ads')?.childElementCount ?? 0) > 0
+        return { at: sourceTime, resumedTime: document.querySelector('video')?.currentTime ?? null, targetElapsed: startedAt === undefined ? null : performance.now() - startedAt, url: location.href, playerNamedId, sourceAd, targetAd }
+      }, { sourceTime: at, sourceAd: source.advert })
+      await test.info().attach('reload-resume-diagnostic', { body: JSON.stringify(diagnostic, null, 2), contentType: 'application/json' })
+      throw error
+    }
   } finally {
     await h.close()
   }
