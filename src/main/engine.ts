@@ -7,7 +7,8 @@
 import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
-import { clearLeftAt, clearRescue, leftAt, load, markArrival, remember, rescueRecord, save, saveRescue, setLeftAt, setQuickOn, takeArrival, type LeftAt, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
+import { clearRescue, load, markArrival, remember, rescueRecord, save, saveRescue, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
+import { clearPosition, markResumeArrival, readPosition, takeResumeArrival, writePosition } from './resume-position.ts'
 import { narrowNow } from './ui/device.ts'
 
 /**
@@ -96,6 +97,11 @@ const AD_PAUSED_MS = 6000
  * autonav or inline player has taken the element back from our queue.
  */
 const FOREIGN_VIDEO_MS = 2000
+
+// A place may keep waiting for its seek only this long after the player has
+// positively named the very track. The window opens at that naming and not
+// before, so an advert of any length may run first without spending it.
+const RESUME_EXPIRE_MS = 15_000
 
 export type Listener = () => void
 
@@ -470,12 +476,12 @@ export class Engine {
    * this whole hold is waiting for.
    */
   private holding = false
-  /**
-   * The place a resumed track comes back to, set only by an arrival that
-   * carries listening intent (ours, or a reload of the track already being
-   * heard) and spent exactly once, on the readiness of that same track.
-   */
-  private resumeAt: LeftAt | undefined
+  // The place a continuation comes back to: the track, the second, the
+  // attempts already spent seeking it, and when the player first named the
+  // very track, which is what opens the expiry. Armed only by an arrival a
+  // recovery or a redirect marked for exactly that track, or a warm reload
+  // of it, and taken down the moment the pursuit ends.
+  private resumeAt: { id: string; t: number; tries: number; confirmedAt?: number } | undefined
   /** When the playing place was last written down, for the tick's throttle. */
   private leftAtWrittenAt = 0
   private holdArrival(): void {
@@ -484,38 +490,42 @@ export class Engine {
     const ours = takeArrival()
     const here = videoIdInUrl()
     const named = this.namedVideo()
-    const remembered = here !== undefined
-      && this.current?.videoId === here
-      && (named === undefined || named === '' || named === here)
+    const nav = performance.getEntriesByType('navigation')[0]
+    const reloaded = nav instanceof PerformanceNavigationTiming && nav.type === 'reload'
+    const warm = Date.now() - this.state.savedAt < 12 * 60 * 60 * 1000
+    // A continuation's one-time mark, spent by taking it whether or not it
+    // matched; only its match, or the warm reload below, may arm a place.
+    const resumeIntent = takeResumeArrival(sessionStorage, here ?? '')
     // Our own arrival is a track someone pressed, still waiting to be heard.
     // Saying so here is what puts the watch page under the same ladder as
-    // everywhere else: without it the engine has no intent on this page at all
-    // — it only adopts whatever plays — so an arrival that never starts is a
-    // silence nothing is watching. YouTube usually starts it within the grace
-    // period and the intent is dropped unused.
-    // A reload of the track the queue was already on is not YouTube choosing
-    // a video for us. The URL and saved cursor name the same thing and the
-    // player either agrees or has not named anything yet, so carry the
-    // listening intent across the new document. This
-    // exact state was held as an unsolicited arrival on 2026-09-09: the bar
-    // and player both named T6GNG4A8U0c, while diagnostics said "요청 없음"
-    // and "도착 보류 중" over a paused Buffering player. `adoptPlaying()` is
-    // deliberately called after this check: adopting the URL first would make
-    // every unrelated watch page look remembered.
-    if (here && (ours === here || remembered)) {
+    // everywhere else: without it the engine has no intent on this page at
+    // all — it only adopts whatever plays — so an arrival that never starts
+    // is a silence nothing is watching. The same listening intent belongs to
+    // an arrival the queue already agrees with, URL and player naming its
+    // own track: such a reload was held as an unsolicited arrival on
+    // 2026-09-09, the bar and player both naming T6GNG4A8U0c while
+    // diagnostics said "요청 없음" over a paused Buffering player.
+    // `adoptPlaying()` is deliberately called after this check: adopting the
+    // URL first would make every unrelated watch page look remembered.
+    // Listening is not continuing, though: only the mark above, or a warm
+    // reload of the very track, may bring the place across with it.
+    const remembered = reloaded && warm && here !== undefined && this.current?.videoId === here && named === here
+    if (here && (ours === here || resumeIntent || remembered)) {
       this.loadedId = here
       this.loadAskedAt = Date.now()
       this.progressAt = Date.now()
       this.rescue = rescueRecord(here)
       this.wantsPlaying = true
       this.wantsSound = true
-      // A listen interrupted at 4:12 comes back at 4:12, not at 0:00 — but
-      // only for the track the place belongs to, and only once it is this
-      // track's own media that is ready (an advert shares the element).
-      const left = leftAt()
-      if (left && left.id === here && left.t >= 3) this.resumeAt = left
+      // A listen interrupted at 4:12 comes back at 4:12 — but only when
+      // this arrival is itself a continuation. A pressed track that merely
+      // shares an old place with the queue's current one starts from zero.
+      if (resumeIntent || remembered) {
+        const place = readPosition(sessionStorage, here)
+        if (place) this.resumeAt = { id: place.videoId, t: place.seconds, tries: 0 }
+      }
     }
-    if (!here || ours === here || remembered) return
+    if (!here || ours === here || resumeIntent || remembered) return
     // Late is not an arrival. A page that has been open for a while and then
     // gets the mode switched on was playing by the reader's choice.
     if (performance.now() > 15_000) return
@@ -531,24 +541,16 @@ export class Engine {
     // reload (a page opened on purpose navigated here, and is not ours to
     // correct), only while the listening state is still warm — a queue that
     // went quiet half a day ago must not take over a watch page opened since
-    // (savedAt, store.ts) — and a current track that can still play. The
-    // arrival mark is the one a pressed track leaves, so the destination
-    // resumes rather than sitting held.
-    const reloaded = (() => {
-      try {
-        const nav = performance.getEntriesByType('navigation')[0]
-        return nav instanceof PerformanceNavigationTiming && nav.type === 'reload'
-      } catch {
-        return false
-      }
-    })()
-    const warm = Date.now() - this.state.savedAt < 12 * 60 * 60 * 1000
+    // (savedAt, store.ts) — and a current track that can still play. Both
+    // marks go down together, so the destination starts rather than sitting
+    // held, and comes back to the place it left.
     if (
       reloaded && warm && this.current && !this.current.unavailable
       && this.current.videoId !== here
     ) {
       setQuickOn(true)
       markArrival(this.current.videoId)
+      markResumeArrival(sessionStorage, this.current.videoId)
       save(this.state)
       location.assign(`/watch?v=${this.current.videoId}`)
       return
@@ -649,53 +651,70 @@ export class Engine {
     if (this.wantsPlaying) this.tryStart()
   }
 
-  /**
-   * Puts a resumed track back where it was left, once.
-   *
-   * Runs on the element's own readiness rather than from the arrival, because
-   * at arrival time the media for the track does not exist yet: a seek issued
-   * there was measured to be swallowed by the load that followed it. The
-   * player's named video stills guards the one case where readiness belongs
-   * to something else — an advert shares the element with the track it
-   * interrupts.
-   */
+  // A seek issued at arrival time was measured to be swallowed by the load
+  // that followed it, which is why this answers readiness instead.
+  // Puts a continuation back at its place once the media is proven to be it.
+  // Anything less waits and spends nothing; bounded failures stand down.
   private takeResume(): void {
-    const r = this.resumeAt
-    if (!r) return
-    const named = this.namedVideo()
-    if (named !== undefined && named !== r.id) return
-    this.resumeAt = undefined
+    const want = this.resumeAt
+    if (!want) return
+    // The queue has moved to another track: over, whatever the media is.
+    if (this.current?.videoId !== want.id) {
+      this.resumeAt = undefined
+      return
+    }
+    // Unnamed, empty, foreign or advertising media is not the target.
+    const namedNow = this.namedVideo()
+    const el = this.videoEl()
+    if (namedNow !== want.id || this.adBlocking()) return
+    if (!el || el.readyState < 2) return
+    want.confirmedAt ??= Date.now()
+    // At the place already, heard to have begun on its own past three
+    // seconds without it, out of attempts, or out of time: over, and no
+    // later readiness may jump the listening track.
+    if (el.currentTime >= want.t - 2 || (want.tries > 0 && el.currentTime > 3) || want.tries >= 2 || Date.now() - want.confirmedAt > RESUME_EXPIRE_MS) {
+      this.resumeAt = undefined
+      return
+    }
+    want.tries += 1
     try {
-      this.player?.seekTo(r.t, true)
-      const el = this.videoEl()
-      if (el && el.currentTime < 1) el.currentTime = r.t
+      this.player?.seekTo(want.t, true)
+      if (el.currentTime < 3) el.currentTime = want.t
     } catch {
       /* a player that will not be seeked plays from zero; the listen continues */
     }
   }
 
-  /**
-   * Writes down where the current track is, for the reload that comes back.
-   *
-   * Public because the last honest write belongs to the page's departure
-   * (index.ts hands it to the same hook as the background hand-off): the
-   * five-second tick writes are the beats, and pagehide writes the final
-   * one exactly where the listener actually was.
-   */
-  writeLeftAt(): void {
+  private writeLeftAt(): void {
     const track = this.current
     if (!track) return
-    const { current, duration } = this.position
-    // A track all but finished is not worth a place: resuming into its last
-    // breath plays seconds and moves on, which is the one resume that feels
-    // broken. It clears rather than keeps, so the next listen starts clean.
-    if (Number.isFinite(duration) && duration > 0 && current > duration - 10) {
-      clearLeftAt()
-      return
-    }
+    // Only media proven to be this very track may have its clock written
+    // down: the player must name it exactly, on a load that has landed (the
+    // element mid-load still carries the last track's clock), with no advert
+    // holding it and nothing foreign on it. Anything less is somebody else's
+    // clock, and writing it down would hand the next track the previous
+    // one's place. A refused sample is not a beat: the throttle is left
+    // alone so the first honest one after it is still written promptly. A
+    // sample at the edges of a track is not kept but cleared, and that does
+    // count.
+    if (this.loading !== undefined || this.foreignSince !== undefined || this.adShowing() || this.namedVideo() !== track.videoId) return
+    // The element's own clock, not the last tick's beat: this write is also
+    // the page's departure, where half a second of drift is a place lost.
+    const el = this.videoEl()
+    const current = el ? el.currentTime : this.position.current
+    const duration = el && Number.isFinite(el.duration) ? el.duration : this.position.duration
+    // A place this early is a start, not a place: not a beat, and the throttle
+    // stays where it was so the first beat past it is written promptly. Nor
+    // is a write the store refused: the beat is counted only once it landed
+    // (or deliberately cleared the place), so a transient refusal is retried
+    // on the very next tick rather than five seconds later.
     if (current < 3) return
-    this.leftAtWrittenAt = Date.now()
-    setLeftAt(track.videoId, current)
+    if (writePosition(sessionStorage, { videoId: track.videoId, seconds: current, duration })) this.leftAtWrittenAt = Date.now()
+  }
+
+  departForBackground(): void {
+    this.writeLeftAt()
+    this.resumeForBackground()
   }
   /**
    * Ask the paused, loaded track to play, both ways.
@@ -846,6 +865,9 @@ export class Engine {
       saveRescue(this.rescue)
       setQuickOn(true)
       markArrival(id)
+      // A rescue is a continuation, not a selection: its mark carries the
+      // place across, spent by the arrival that names this very track.
+      markResumeArrival(sessionStorage, id)
       save(this.state)
       location.assign(`/watch?v=${id}`)
       return
@@ -861,6 +883,7 @@ export class Engine {
       saveRescue(this.rescue)
       setQuickOn(true)
       markArrival(id)
+      markResumeArrival(sessionStorage, id)
       save(this.state)
       location.reload()
       return
@@ -1150,6 +1173,9 @@ export class Engine {
     // The clock, watched here and nowhere else. Every judgement about whether a
     // track is playing comes back to whether this number moves.
     const clock = this.videoEl()?.currentTime ?? -1
+    this.takeResume()
+    const pendingResume = this.resumeAt
+    if (pendingResume && (this.current?.videoId !== pendingResume.id || (!ad && named === pendingResume.id && pendingResume.tries > 0 && clock > 3))) this.resumeAt = undefined
     if (!foreign && clock !== this.progressTime) {
       if (this.progressTime >= 0 && clock > 0 && this.loading === undefined) this.everPlayed = true
       this.progressTime = clock
@@ -1609,6 +1635,12 @@ export class Engine {
     this.releaseHold()
     const track = this.current
     if (!track) return
+    // A deliberate track change is not a continuation: whatever place the
+    // last track was keeping dies here, in this tab, before the new track is
+    // asked for, so a reload of the new arrival can never bring the old
+    // clock back. Recovery navigation and reload do not come through here.
+    clearPosition(sessionStorage)
+    this.resumeAt = undefined
     this.loading = track.videoId
     this.loadedId = track.videoId
     this.loadSeq += 1

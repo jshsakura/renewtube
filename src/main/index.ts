@@ -190,8 +190,7 @@ async function start(): Promise<void> {
     // to write down where in the track the listener was: a reload reads it
     // back on arrival and resumes at that second rather than from zero.
     resumeBackground = () => {
-      engine.writeLeftAt()
-      engine.resumeForBackground()
+      engine.departForBackground()
     }
     // YouTube's own interface language decides ours unless the reader has
     // said otherwise. Reading one language on the page and another over it is

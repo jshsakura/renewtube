@@ -322,7 +322,9 @@ test('a remembered watch track that collapses into paused buffering is recovered
       queue: [{ videoId: 'v1', title: 'track 1', byline: 'lab', duration: '0:30', unavailable: false }],
       index: 0,
       video: 'stage',
+      savedAt: Date.now(),
     }))
+    sessionStorage.setItem('oc-easy-mode:resume-arrival', 'v1')
   })
   await lab(page, { fault: 'paused-buffering', reload: 'healthy' }, '/watch?v=v1')
   // It really is heard first; do not let that short healthy window satisfy
