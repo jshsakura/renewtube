@@ -18,6 +18,7 @@ export const ES: Record<string, string> = {
   "정지": "Detener",
   "재생목록": "Listas",
   "음악": "Música",
+  "다시 듣기": "Volver a escuchar",
   "영상": "Vídeo",
   "영상 모드": "Modo vídeo",
   "내 라이브러리": "Tu biblioteca",

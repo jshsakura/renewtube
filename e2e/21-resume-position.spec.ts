@@ -121,6 +121,29 @@ test('a reload of the track being heard comes back where it was left', async ({ 
   expect(v.currentTime, 'the reload restarted the track instead of resuming it').toBeGreaterThanOrEqual(10)
 })
 
+test('a reload from a browse page follows the track this tab was playing', async ({ page }) => {
+  // Given: a track is playing on a URL with no video id, with an honest place
+  // saved for this tab.
+  await lab(page, { fault: 'healthy', watch: 'healthy' })
+  await playQueue(page)
+  await expectSound(page)
+  await seekTo(page, 12)
+  await page.evaluate(() => (window as unknown as { LAB: { engine: { departForBackground(): void } } }).LAB.engine.departForBackground())
+  expect((await readStored(page))?.id).toBe('v1')
+
+  // When: that browse page is reloaded.
+  await page.reload()
+
+  // Then: the tab moves to the current track instead of forgetting it and
+  // rebuilding the page it originally opened on.
+  await expectSound(page)
+  const v = await view(page)
+  expect(v.path).toBe('/watch')
+  expect(v.videoId).toBe('v1')
+  expect(v.playingTitle).toBe('track 1')
+  expect(v.currentTime).toBeGreaterThanOrEqual(10)
+})
+
 test('a reload the queue has outgrown redirects and resumes the queue\'s own track', async ({ page }) => {
   // Given: the queue has moved to v2 while the address still names v1
   await lab(page, { fault: 'no-player', watch: 'healthy' })

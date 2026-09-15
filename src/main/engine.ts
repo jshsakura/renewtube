@@ -41,7 +41,7 @@ const STUCK_UNSTARTED_MS = 2000
  * element at NETWORK_EMPTY (measured 2026-09-06, the owner's diagnostics) —
  * stays empty past it.
  */
-const DORMANT_MS = 2200
+const DORMANT_MS = 1200
 
 /**
  * How long one rung of the recovery ladder is given before the next is tried.
@@ -135,6 +135,24 @@ export interface Position {
   buffering: boolean
   /** A wait that has outlasted STALL_AFTER_MS: the transport's stop state. */
   stalled: boolean
+}
+
+/** Whether this document replaced the previous one through an explicit reload. */
+function isReload(): boolean {
+  const nav = performance.getEntriesByType('navigation')[0]
+  return nav instanceof PerformanceNavigationTiming && nav.type === 'reload'
+}
+
+/**
+ * Proof that a reload belongs to the track this tab was actually playing.
+ *
+ * A saved queue alone is not proof: it may be hours old. A same-tab position
+ * is. During the first three seconds there deliberately is no saved position,
+ * so a freshly written state gets a short grace to cover an immediate reload.
+ */
+function continuingReload(state: Persisted, track: Track | undefined): boolean {
+  if (!isReload() || !track || track.unavailable) return false
+  return readPosition(sessionStorage, track.videoId) !== null || Date.now() - state.savedAt < 30_000
 }
 
 export class Engine {
@@ -274,7 +292,7 @@ export class Engine {
     // two different stories. Keep the queue, clear only its stale cursor. An
     // attached player with a real id is adopted below, and our own recovery
     // arrival has that id in the watch URL as well.
-    if (this.current !== undefined && videoIdInUrl() === undefined) {
+    if (this.current !== undefined && videoIdInUrl() === undefined && !continuingReload(this.state, this.current)) {
       this.state.index = -1
       this.state.video = 'hidden'
       save(this.state)
@@ -490,11 +508,10 @@ export class Engine {
     const ours = takeArrival()
     const here = videoIdInUrl()
     const named = this.namedVideo()
-    const nav = performance.getEntriesByType('navigation')[0]
-    const reloaded = nav instanceof PerformanceNavigationTiming && nav.type === 'reload'
-    const warm = Date.now() - this.state.savedAt < 12 * 60 * 60 * 1000
+    const reloaded = isReload()
+    const continuing = continuingReload(this.state, this.current)
     // A continuation's one-time mark, spent by taking it whether or not it
-    // matched; only its match, or the warm reload below, may arm a place.
+    // matched; only its match, or the proven reload below, may arm a place.
     const resumeIntent = takeResumeArrival(sessionStorage, here ?? '')
     // Our own arrival is a track someone pressed, still waiting to be heard.
     // Saying so here is what puts the watch page under the same ladder as
@@ -509,7 +526,7 @@ export class Engine {
     // URL first would make every unrelated watch page look remembered.
     // Listening is not continuing, though: only the mark above, or a warm
     // reload of the very track, may bring the place across with it.
-    const remembered = reloaded && warm && here !== undefined && this.current?.videoId === here && named === here
+    const remembered = continuing && here !== undefined && this.current?.videoId === here && named === here
     if (here && (ours === here || resumeIntent || remembered)) {
       this.loadedId = here
       this.loadAskedAt = Date.now()
@@ -518,12 +535,25 @@ export class Engine {
       this.wantsPlaying = true
       this.wantsSound = true
       // A listen interrupted at 4:12 comes back at 4:12 — but only when
-      // this arrival is itself a continuation. A pressed track that merely
+    // this arrival is itself a continuation. A pressed track that merely
       // shares an old place with the queue's current one starts from zero.
       if (resumeIntent || remembered) {
         const place = readPosition(sessionStorage, here)
         if (place) this.resumeAt = { id: place.videoId, t: place.seconds, tries: 0 }
       }
+    }
+    // A browse page has no video id in its address. It used to erase the
+    // current cursor in the constructor and then reload the browse screen,
+    // even while this tab had a proven playing position. Give the address an
+    // honest target first; the one-time marks make the arriving watch page a
+    // continuation and put it back at the saved second.
+    if (!here && continuing && this.current) {
+      setQuickOn(true)
+      markArrival(this.current.videoId)
+      markResumeArrival(sessionStorage, this.current.videoId)
+      save(this.state)
+      location.assign(`/watch?v=${this.current.videoId}`)
+      return
     }
     if (!here || ours === here || resumeIntent || remembered) return
     // Late is not an arrival. A page that has been open for a while and then
@@ -539,13 +569,13 @@ export class Engine {
     //
     // Three gates keep it from yanking a page the reader chose: only a
     // reload (a page opened on purpose navigated here, and is not ours to
-    // correct), only while the listening state is still warm — a queue that
-    // went quiet half a day ago must not take over a watch page opened since
-    // (savedAt, store.ts) — and a current track that can still play. Both
+    // correct), only with same-tab proof that this was the active listen — an
+    // old queue must not take over a watch page opened since — and a current
+    // track that can still play. Both
     // marks go down together, so the destination starts rather than sitting
     // held, and comes back to the place it left.
     if (
-      reloaded && warm && this.current && !this.current.unavailable
+      reloaded && continuing && this.current && !this.current.unavailable
       && this.current.videoId !== here
     ) {
       setQuickOn(true)
@@ -585,9 +615,15 @@ export class Engine {
     this.watchElement()
     const s = typeof raw === 'number' ? raw : Number((raw as { data?: unknown })?.data ?? raw)
     if (s === State.Ended) {
-      // A stale ENDED from the previous video can arrive right after loadVideoById.
-      if (this.loading && this.player?.getVideoData()?.video_id !== this.loading) return
-      this.ended()
+      // Any ENDED while another load is pending belongs to the video being
+      // replaced. Some player builds rename the new video before delivering
+      // the old notification, so comparing ids here still skipped twice.
+      if (this.loading) return
+      const id = this.current?.videoId
+      if (id !== undefined && this.endedFor !== id) {
+        this.endedFor = id
+        this.ended()
+      }
     }
     this.tick()
   }
@@ -635,8 +671,18 @@ export class Engine {
    * Rebound whenever YouTube swaps the element under us, which it does.
    */
   private boundVideo: HTMLVideoElement | null = null
-  private onElementEnded = (): void => {
-    this.tick()
+  private onElementEnded = (ev: Event): void => {
+    if (ev.currentTarget !== this.boundVideo || this.loading !== undefined) return
+    const id = this.current?.videoId
+    if (id === undefined || this.endedFor === id) return
+    // YouTube autonav can rename the shared player (or even begin its own
+    // next video) before the media element's ended event reaches us. The
+    // event still belongs to the element we bound while our current track was
+    // playing. Trust that event directly; adSeenAt is the guard against the
+    // same shared element announcing the end of an advert.
+    if (this.adShowing() || Date.now() - this.adSeenAt <= AD_SETTLE_MS) return
+    this.endedFor = id
+    this.ended()
   }
   /**
    * Start the current track the instant its element can play.

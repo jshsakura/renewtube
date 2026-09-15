@@ -423,6 +423,8 @@ function tile(opts: {
   cover?: string
   title: string
   sub: string
+  /** Opens the source represented by the subtitle, such as a video's channel. */
+  onSubOpen?: () => void
   /** Drawn on the artwork: a running time, a track count. */
   badge?: string
   square?: boolean
@@ -500,7 +502,21 @@ function tile(opts: {
       ),
     ),
     h('div', { class: 't', title: opts.title }, opts.title),
-    h('div', { class: 's' }, opts.sub),
+    opts.onSubOpen
+      ? (() => {
+          const sub = h(
+            'button',
+            { class: 's channelLink', title: t('채널 열기'), 'aria-label': `${opts.sub} · ${t('채널 열기')}` },
+            opts.sub,
+          )
+          sub.addEventListener('click', (ev) => {
+            ev.stopPropagation()
+            ev.preventDefault()
+            opts.onSubOpen!()
+          })
+          return sub
+        })()
+      : h('div', { class: 's' }, opts.sub),
   )
   return card
 }
@@ -512,6 +528,9 @@ function trackTile(ctx: Ctx, list: Track[], i: number): HTMLElement {
     cover: thumbnail(track.videoId),
     title: track.title,
     sub: track.byline,
+    onSubOpen: track.channelId
+      ? () => ctx.go({ kind: 'channel', id: track.channelId!, title: track.byline })
+      : undefined,
     badge: track.duration,
     quick: { icon: 'plus', title: t('재생목록에 넣기'), run: () => void ctx.addToPlaylist([track]) },
     menu: () => tileMenu(ctx, track),
@@ -528,6 +547,9 @@ function tileMenu(ctx: Ctx, track: Track): Array<Parameters<typeof showMenu>[2][
     '-',
     { label: t('이 곡으로 라디오'), icon: 'radio', onSelect: () => void startRadio(ctx, track) },
     { label: t('재생목록에 추가'), icon: 'library', onSelect: () => void ctx.addToPlaylist([track]) },
+    ...(track.channelId
+      ? [{ label: t('채널 열기'), icon: 'channels' as const, onSelect: () => ctx.go({ kind: 'channel', id: track.channelId!, title: track.byline }) }]
+      : []),
     '-',
     // Feeds YouTube's own recommendations; the same call the bar's 관심 없음 makes.
     { label: t('관심 없음'), icon: 'thumbDown', onSelect: () => { void api.dislike(ctx.cfg, track.videoId).catch(() => {}); ctx.say(t('관심 없음으로 표시했습니다.')) } },
@@ -659,7 +681,11 @@ export function addQuick(ctx: Ctx, track: Track): Parameters<typeof row>[2]['qui
 // ── Explore ────────────────────────────────────────────────────────────────
 
 async function explore(ctx: Ctx, main: HTMLElement): Promise<void> {
-  return shelfScreen(ctx, main, t('음악'), () => api.explore(ctx.cfg), 'radio')
+  const recent = keep(history()).slice(0, 12)
+  const leading: Shelf[] = recent.length > 0
+    ? [{ title: t('다시 듣기'), tracks: recent, playlists: [] }]
+    : []
+  return shelfScreen(ctx, main, t('음악'), () => api.explore(ctx.cfg), 'radio', leading)
 }
 
 /**
@@ -669,16 +695,34 @@ async function explore(ctx: Ctx, main: HTMLElement): Promise<void> {
  * up first with two outlines under it, the answer replaces them, and a feed
  * that came back as a flat list rather than as rows is laid out as a grid.
  */
-async function shelfScreen(ctx: Ctx, main: HTMLElement, title: string, load: () => Promise<api.Page>, glyph: Parameters<typeof icon>[0]): Promise<void> {
+async function shelfScreen(
+  ctx: Ctx,
+  main: HTMLElement,
+  title: string,
+  load: () => Promise<api.Page>,
+  glyph: Parameters<typeof icon>[0],
+  leading: Shelf[] = [],
+): Promise<void> {
   const token = generation
-  replace(main, h('h2', null, title), skShelf(), skShelf())
+  replace(
+    main,
+    h('h2', null, title),
+    leading.length > 0 && h('div', { class: 'shelves' }, leading.map((shelf) => shelfRow(ctx, shelf))),
+    skShelf(),
+    skShelf(),
+  )
   try {
     const page = await load()
     if (!current(token)) return
-    if (page.shelves.length === 0 && page.tracks.length === 0) {
+    if (leading.length === 0 && page.shelves.length === 0 && page.tracks.length === 0) {
       return replace(main, h('h2', null, title), nothing(t('보여줄 것이 없습니다.'), glyph))
     }
-    const shelvesBox = h('div', { class: 'shelves' }, page.shelves.map((shelf) => shelfRow(ctx, shelf, page.client)))
+    const shelvesBox = h(
+      'div',
+      { class: 'shelves' },
+      leading.map((shelf) => shelfRow(ctx, shelf)),
+      page.shelves.map((shelf) => shelfRow(ctx, shelf, page.client)),
+    )
     replace(
       main,
       h('h2', null, title),
@@ -691,7 +735,12 @@ async function shelfScreen(ctx: Ctx, main: HTMLElement, title: string, load: () 
     )
   } catch (err) {
     if (!current(token)) return
-    replace(main, h('h2', null, title), h('div', { class: 'err' }, explain(err)))
+    replace(
+      main,
+      h('h2', null, title),
+      leading.length > 0 && h('div', { class: 'shelves' }, leading.map((shelf) => shelfRow(ctx, shelf))),
+      h('div', { class: 'err' }, explain(err)),
+    )
   }
 }
 
@@ -749,23 +798,35 @@ async function channelList(ctx: Ctx, main: HTMLElement): Promise<void> {
     const list = await api.subscribedChannels(ctx.cfg)
     if (!current(token)) return
     if (list.length === 0) return replace(main, h('h2', null, title), nothing(t('구독한 채널이 없습니다.'), 'channels'))
-    replace(
-      main,
-      h('h2', null, title),
-      h(
-        'div',
-        { class: 'grid' },
-        list.map((ch) =>
-          tile({
-            cover: ch.avatar,
-            title: ch.title,
-            sub: ch.subtitle,
-            square: true,
-            onOpen: () => ctx.go({ kind: 'channel', id: ch.id, title: ch.title }),
-          }),
-        ),
-      ),
-    )
+    const grid = h('div', { class: 'grid' })
+    const input = h('input', {
+      type: 'search',
+      'data-nav': '',
+      placeholder: t('채널 검색'),
+      'aria-label': t('채널 검색'),
+      autocomplete: 'off',
+    }) as HTMLInputElement
+    const draw = (): void => {
+      const needle = input.value.trim().toLocaleLowerCase()
+      const visible = needle ? list.filter((ch) => ch.title.toLocaleLowerCase().includes(needle)) : list
+      replace(
+        grid,
+        ...(visible.length > 0
+          ? visible.map((ch) =>
+              tile({
+                cover: ch.avatar,
+                title: ch.title,
+                sub: ch.subtitle,
+                square: true,
+                onOpen: () => ctx.go({ kind: 'channel', id: ch.id, title: ch.title }),
+              }),
+            )
+          : [nothing(t('채널을 찾지 못했습니다.'), 'search')]),
+      )
+    }
+    input.addEventListener('input', draw)
+    draw()
+    replace(main, h('h2', null, title), h('label', { class: 'searchbox channelLibrarySearch' }, icon('search', 17), input), grid)
   } catch (err) {
     if (!current(token)) return
     replace(main, h('h2', null, title), h('div', { class: 'err' }, explain(err)))

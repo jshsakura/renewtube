@@ -31,8 +31,20 @@ export function isNativeNext(el: Element): boolean {
   return /^(?:다음|next)(?:\s|\(|$)/i.test(name)
 }
 
-/** Captures YouTube's Next before autonav can take the shared player. */
-export function installNativeNext(engine: Pick<Engine, 'next'>): () => void {
+function setMediaAction(
+  session: MediaSession,
+  action: 'nexttrack' | 'previoustrack',
+  handler: MediaSessionActionHandler | null,
+): void {
+  try {
+    session.setActionHandler(action, handler)
+  } catch (err) {
+    if (!(err instanceof DOMException && err.name === 'NotSupportedError')) throw err
+  }
+}
+
+/** Captures YouTube and system media controls before they can use YouTube's queue. */
+export function installNativeNext(engine: Pick<Engine, 'next' | 'prev'>): () => void {
   const onClick = (ev: MouseEvent) => {
     if (ev.button !== 0) return
     const target = ev.composedPath().find((node): node is Element => node instanceof Element && isNativeNext(node))
@@ -42,5 +54,16 @@ export function installNativeNext(engine: Pick<Engine, 'next'>): () => void {
     engine.next()
   }
   document.addEventListener('click', onClick, true)
-  return () => document.removeEventListener('click', onClick, true)
+  const session = 'mediaSession' in navigator ? navigator.mediaSession : undefined
+  if (session) {
+    setMediaAction(session, 'nexttrack', () => engine.next())
+    setMediaAction(session, 'previoustrack', () => engine.prev())
+  }
+  return () => {
+    document.removeEventListener('click', onClick, true)
+    if (session) {
+      setMediaAction(session, 'nexttrack', null)
+      setMediaAction(session, 'previoustrack', null)
+    }
+  }
 }

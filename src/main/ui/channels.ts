@@ -59,6 +59,13 @@ export function applyFilter(tracks: Track[], filter: string[]): Track[] {
   return tracks.filter((track) => track.channelId !== undefined && keep.has(track.channelId))
 }
 
+/** Channels whose names contain the query, without case or surrounding-space surprises. */
+export function searchChannels<T extends { name: string }>(channels: T[], query: string): T[] {
+  const needle = query.trim().toLocaleLowerCase()
+  if (!needle) return channels
+  return channels.filter((channel) => channel.name.toLocaleLowerCase().includes(needle))
+}
+
 /**
  * Opens the checklist. Resolves with the chosen ids, or null if dismissed.
  *
@@ -119,12 +126,20 @@ export function chooseChannels(
     }
 
     const list = h('div', { class: 'list channelList' })
+    const search = h('input', {
+      type: 'search',
+      'data-nav': '',
+      placeholder: t('채널 검색'),
+      'aria-label': t('채널 검색'),
+      autocomplete: 'off',
+    }) as HTMLInputElement
     const draw = (): void => {
+      const visible = searchChannels(channels, search.value)
       replace(
         list,
-        channels.length === 0
+        visible.length === 0
           ? h('div', { class: 'empty', style: 'padding: 16px' }, t('채널을 찾지 못했습니다.'))
-          : channels.map((channel) => {
+          : visible.map((channel) => {
               const on = chosen.has(channel.id)
               return h(
                 'button',
@@ -146,6 +161,7 @@ export function chooseChannels(
             }),
       )
     }
+    search.addEventListener('input', draw)
     draw()
 
     const scrim = h(
@@ -156,6 +172,7 @@ export function chooseChannels(
         'div',
         { class: modalClass(), role: 'dialog' },
         modalHead(t('볼 채널 고르기'), () => done(null)),
+        h('label', { class: 'searchbox channelSearch' }, icon('search', 17), search),
         list,
         h(
           'div',

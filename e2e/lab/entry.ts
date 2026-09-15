@@ -489,6 +489,17 @@ function build(): Fake {
 // The interval here is shorter than the product's four seconds only so a test
 // that swaps a player does not spend four of its own waiting for the answer.
 
+const mediaActions = new Map<MediaSessionAction, MediaSessionActionHandler>()
+Object.defineProperty(navigator, 'mediaSession', {
+  configurable: true,
+  value: {
+    setActionHandler(action: MediaSessionAction, handler: MediaSessionActionHandler | null): void {
+      if (handler) mediaActions.set(action, handler)
+      else mediaActions.delete(action)
+    },
+  },
+})
+
 const engine = new Engine()
 installNativeNext(engine)
 if (pageFault !== 'no-player') build()
@@ -556,6 +567,9 @@ const lab = {
     document.body.appendChild(controls)
     button.click()
     controls.remove()
+  },
+  mediaAction(action: 'nexttrack' | 'previoustrack') {
+    mediaActions.get(action)?.({ action })
   },
   /** Lets YouTube's own queue take the player without telling our engine. */
   autoplay(id: string) {

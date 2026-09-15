@@ -18,6 +18,7 @@ export const VI: Record<string, string> = {
   "정지": "Dừng",
   "재생목록": "Danh sách phát",
   "음악": "Nhạc",
+  "다시 듣기": "Nghe lại",
   "영상": "Video",
   "영상 모드": "Chế độ video",
   "내 라이브러리": "Thư viện của bạn",

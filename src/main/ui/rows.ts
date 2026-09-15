@@ -46,6 +46,9 @@ export function row(ctx: Ctx, track: Track, opts: RowOptions): HTMLElement {
       '-',
       { label: t('이 곡으로 라디오'), icon: 'radio', onSelect: () => void startRadio(ctx, track) },
       { label: t('재생목록에 추가'), icon: 'library', onSelect: () => void ctx.addToPlaylist([track]) },
+      ...(track.channelId
+        ? [{ label: t('채널 열기'), icon: 'channels' as const, onSelect: () => ctx.go({ kind: 'channel', id: track.channelId!, title: track.byline }) }]
+        : []),
       '-',
       { label: t('공유'), icon: 'share', onSelect: () => void shareTrack(ctx, track) },
       { label: t('유튜브에서 열기'), icon: 'external', onSelect: () => window.open(`https://www.youtube.com/watch?v=${track.videoId}`, '_blank') },
@@ -97,7 +100,21 @@ export function row(ctx: Ctx, track: Track, opts: RowOptions): HTMLElement {
       'div',
       { class: 'meta' },
       h('div', { class: 'title', title: track.title }, track.title || track.videoId),
-      h('div', { class: 'by' }, track.unavailable ? t('재생할 수 없음') : track.byline),
+      track.unavailable || !track.channelId
+        ? h('div', { class: 'by' }, track.unavailable ? t('재생할 수 없음') : track.byline)
+        : h(
+            'button',
+            {
+              class: 'by channelLink',
+              title: t('채널 열기'),
+              'aria-label': `${track.byline} · ${t('채널 열기')}`,
+              onclick: (ev: Event) => {
+                ev.stopPropagation()
+                ctx.go({ kind: 'channel', id: track.channelId!, title: track.byline })
+              },
+            },
+            track.byline,
+          ),
     ),
     h('div', { class: 'dur' }, track.duration),
   )

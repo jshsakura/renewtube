@@ -520,6 +520,8 @@ input { font: inherit; color: inherit; }
 .searchbox input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: 0; font-size: 16px; }
 .searchbox input::placeholder { color: var(--muted-foreground); }
 .searchbox svg { color: var(--muted-foreground); flex: none; }
+.channelLibrarySearch { max-width: 420px; }
+.channelSearch { margin: 0 16px 10px; }
 
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 24px; }
 /* A menu at the end of a toolbar goes to the far end: the actions are one
@@ -609,6 +611,8 @@ input { font: inherit; color: inherit; }
 /* Title and artist close together: two lines of one thing, not two things. */
 .row .title { font-size: 14px; font-weight: 500; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .by { color: var(--muted-foreground); font-size: 13px; line-height: 1.25; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.channelLink { cursor: pointer; text-align: left; }
+.channelLink:hover, .channelLink:focus-visible { color: var(--foreground); text-decoration: underline; }
 .row .dur { color: var(--muted-foreground); font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
 .row .more, .row .quick {
   width: 32px; height: 32px; border-radius: var(--radius-md);
@@ -818,6 +822,7 @@ input { font: inherit; color: inherit; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card .s, .tile .s { margin-top: 2px; padding: 0 10px 10px; color: var(--muted-foreground); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile button.s { display: block; width: 100%; }
 
 
 .shelves { display: block; position: relative; width: 100%; }
@@ -1706,9 +1711,9 @@ input[type=range]::-moz-range-thumb {
   .app.narrow.sheet-open .right .sp,
   .app.narrow.sheet-open .right .sl { display: inline-flex; }
   .app.narrow.sheet-open .right .mr { display: none; }
-  /* Eight 40px targets still fit a 393px phone when the gaps are kept tight. */
-  .app.narrow.sheet-open .right { gap: 2px; }
-  .app.narrow.sheet-open .right button { width: 40px; height: 40px; }
+  /* Nine targets, including share, still fit a 390px phone. */
+  .app.narrow.sheet-open .right { gap: 1px; }
+  .app.narrow.sheet-open .right button { width: 38px; height: 38px; }
   .app.narrow.sheet-open .right button svg { width: 19px; height: 19px; }
 }
 

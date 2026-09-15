@@ -24,6 +24,7 @@ import { installRemote } from './remote.ts'
 import { installKeys } from './keys.ts'
 import { closeChannels } from './channels.ts'
 import { render } from './views.ts'
+import { shareTrack } from './rows.ts'
 import { closeSearch, openSearch } from './search.ts'
 import { closeSettings, openSettings, type SettingsActions } from './settings.ts'
 import { MENU, menuLines, setMenuOn, topicTitle } from '../menu.ts'
@@ -619,7 +620,12 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
 
   const nowThumb = h('div', { class: 'thumb' })
   const nowTitle = h('div', { class: 't' }, t('재생 중인 항목 없음'))
-  const nowBy = h('div', { class: 'b' })
+  const nowBy = h('button', { class: 'b channelLink', 'data-nav': '' }) as HTMLButtonElement
+  nowBy.addEventListener('click', (ev) => {
+    ev.stopPropagation()
+    const track = engine.current
+    if (track?.channelId) ctx.go({ kind: 'channel', id: track.channelId, title: track.byline })
+  })
   const playButton = h('button', { class: 'big', 'data-nav': '', title: t('재생 / 일시정지') }, icon('play', 20))
   playButton.addEventListener('click', () => engine.toggle())
 
@@ -847,6 +853,16 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
 
   const queueButton = h('button', { 'data-nav': '', title: t('대기열') }, icon('queue', 18))
   queueButton.addEventListener('click', () => ctx.go({ kind: 'queue' }))
+
+  const shareButton = h(
+    'button',
+    { class: 'shr', 'data-nav': '', title: t('공유'), 'aria-label': t('공유') },
+    icon('share', 18),
+  )
+  shareButton.addEventListener('click', () => {
+    const track = engine.current
+    if (track) void shareTrack(ctx, track)
+  })
 
   // ── The words ────────────────────────────────────────────────────────────
   //
@@ -1090,7 +1106,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // The heart leads the right-hand row on every screen. Beside the title it
   // took the title's room in a column that has little: "하트 위치가 제목
   // 짜르고 있네" (2026-09-04). The title's column is the title's.
-  const rightRow = h('div', { class: 'right' }, rateBox, queueButton, lyricsButton, speedButton, sleepButton, moreButton, muteButton, volume, pipButton, videoButton)
+  const rightRow = h('div', { class: 'right' }, rateBox, queueButton, lyricsButton, shareButton, speedButton, sleepButton, moreButton, muteButton, volume, pipButton, videoButton)
   const now = h('div', { class: 'now' }, nowThumb, h('div', { class: 'nowText' }, nowTitle, nowBy))
   // The track itself is the handle: a phone opens the player by tapping what
   // is playing, which is what every music app has taught. It is a button on a
@@ -1132,6 +1148,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     const track = engine.current
     nowTitle.textContent = track ? track.title : t('재생 중인 항목 없음')
     nowBy.textContent = track ? track.byline : ''
+    nowBy.disabled = !track?.channelId
+    nowBy.title = track?.channelId ? t('채널 열기') : ''
+    nowBy.setAttribute('aria-label', track?.channelId ? `${track.byline} · ${t('채널 열기')}` : t('채널 열기'))
     nowThumb.style.backgroundImage = track ? `url(${thumbnail(track.videoId)})` : ''
     app.style.setProperty('--art', track ? `url(${thumbnail(track.videoId)})` : 'none')
     shuffleButton.classList.toggle('on', engine.state.shuffle)
@@ -1163,6 +1182,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     pipButton.setAttribute('aria-label', pipButton.title)
     prevButton.disabled = engine.state.queue.length === 0
     nextButton.disabled = engine.state.queue.length === 0
+    shareButton.disabled = !track
     loadRating()
     // Lit while either of the things behind it is doing something, because a
     // player running at 1.5x with a timer armed should say so somewhere.

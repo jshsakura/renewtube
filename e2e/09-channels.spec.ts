@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, open } from './fixture.ts'
-import { channelsOf, applyFilter } from '../src/main/ui/channels.ts'
+import { channelsOf, applyFilter, searchChannels } from '../src/main/ui/channels.ts'
 import { tracks as parseTracks } from '../src/main/parse.ts'
 
 const fixture = readFileSync(join(import.meta.dirname, 'fixtures', 'search-channel-ids.json'), 'utf8')
@@ -49,6 +49,14 @@ test('an empty filter is no filter, and a chosen one keeps only its channels', (
   expect(applyFilter(parsed, ['UCnotarealchannelid'])).toHaveLength(0)
 })
 
+test('channel search ignores case and surrounding spaces', () => {
+  const list = channelsOf(parsed)
+  const wanted = list[0]!
+  expect(searchChannels(list, `  ${wanted.name.toLocaleUpperCase()}  `)).toEqual([wanted])
+  expect(searchChannels(list, 'a name that is not here')).toEqual([])
+  expect(searchChannels(list, '')).toBe(list)
+})
+
 // ── And on the screen ──────────────────────────────────────────────────────
 
 test('choosing a channel narrows the feed, and clearing it brings the rest back', async () => {
@@ -80,6 +88,53 @@ test('choosing a channel narrows the feed, and clearing it brings the rest back'
     await h.page.locator('oc-easy-mode-overlay').locator('.btn.ghost', { hasText: '필터 해제' }).click()
     await expect(rows).toHaveCount(parsed.length)
     await expect(ui.locator('.chanFilter .chanCount')).toHaveCount(0)
+  } finally {
+    await h.close()
+  }
+})
+
+test('the subscription channel picker can be searched', async () => {
+  const h = await open('https://www.youtube.com/')
+  try {
+    await serveSubs(h.page)
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '구독' }).click()
+    await ui.locator('.chanFilter').click()
+
+    const overlay = h.page.locator('oc-easy-mode-overlay')
+    const list = channelsOf(parsed)
+    await overlay.locator('.channelSearch input').fill(list[0]!.name)
+    await expect(overlay.locator('.channelRow')).toHaveCount(1)
+    await expect(overlay.locator('.channelRow .channelName')).toHaveText(list[0]!.name)
+
+    await overlay.locator('.channelSearch input').fill('없는 채널 이름')
+    await expect(overlay.locator('.channelRow')).toHaveCount(0)
+    await expect(overlay.locator('.channelList')).toContainText('채널을 찾지 못했습니다.')
+  } finally {
+    await h.close()
+  }
+})
+
+test('a video channel name opens that channel, and the player exposes share', async () => {
+  const h = await open('https://www.youtube.com/')
+  try {
+    await serveSubs(h.page)
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '구독' }).click()
+
+    const first = parsed[0]!
+    const channel = ui.locator('.channelLink', { hasText: first.byline }).first()
+    await expect(channel).toBeVisible()
+    await channel.click()
+    await expect(ui.locator('.main h2')).toHaveText(first.byline)
+
+    await ui.locator('.nav', { hasText: '구독' }).click()
+    await ui.locator('.row:not([aria-hidden])').first().click()
+    const share = ui.locator('.right .shr')
+    await expect(share).toBeVisible()
+    await expect(share).toBeEnabled()
   } finally {
     await h.close()
   }

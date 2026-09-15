@@ -186,6 +186,23 @@ test('the end of a track is the start of the next one', async ({ page }) => {
   await expectSound(page, 10_000)
 })
 
+test('an ended event advances our queue even if YouTube autonav renamed the player first', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page, 3)
+  await expectSound(page)
+
+  // YouTube takes the shared player for its own next video just before the
+  // element announces that the previous one ended.
+  await page.evaluate(() => {
+    const lab = (window as unknown as { LAB: { autoplay(id: string): void; skipToEnd(): void } }).LAB
+    lab.autoplay('youtube-next')
+    lab.skipToEnd()
+  })
+
+  await expect.poll(async () => (await view(page)).index, { timeout: 4000 }).toBe(1)
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 4000 }).toBe('v2')
+})
+
 test('a video YouTube autoplays outside the queue is rejected', async ({ page }) => {
   // The phone showed one title in the bar and another video in the picture
   // (2026-09-09, "화면에보이는 영상하고 하단 재생기의 영상이 다른시점").
@@ -215,6 +232,29 @@ test('YouTube video controls advance RenewTube queue instead of autonav', async 
   const v = await view(page)
   expect(v.playingTitle).toBe('track 2')
   expect(v.index).toBe(1)
+})
+
+test('the system media Next control advances the RenewTube queue', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page, 3)
+  await expectSound(page, 10_000)
+  await page.evaluate(() =>
+    (window as unknown as { LAB: { mediaAction(action: 'nexttrack'): void } }).LAB.mediaAction('nexttrack'),
+  )
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 8000 }).toBe('v2')
+  expect((await view(page)).index).toBe(1)
+})
+
+test('the system media Previous control moves back in the RenewTube queue', async ({ page }) => {
+  await lab(page, { fault: 'healthy' })
+  await playQueue(page, 3)
+  await page.evaluate(() => (window as unknown as { LAB: { next(): void } }).LAB.next())
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 8000 }).toBe('v2')
+  await page.evaluate(() =>
+    (window as unknown as { LAB: { mediaAction(action: 'previoustrack'): void } }).LAB.mediaAction('previoustrack'),
+  )
+  await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 8000 }).toBe('v1')
+  expect((await view(page)).index).toBe(0)
 })
 
 test('an unrequested autoplay is stopped without inventing a current track', async ({ page }) => {

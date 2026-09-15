@@ -18,6 +18,7 @@ export const ID: Record<string, string> = {
   "정지": "Hentikan",
   "재생목록": "Playlist",
   "음악": "Musik",
+  "다시 듣기": "Dengarkan lagi",
   "영상": "Video",
   "영상 모드": "Mode video",
   "내 라이브러리": "Pustaka Anda",
