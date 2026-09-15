@@ -253,6 +253,22 @@ export class Engine {
    * succeeded, and the next press starts it.
    */
   private needsGesture = false
+  /**
+   * Whether this page's media runs under the platform's own rules, and the
+   * queue's place is to follow it rather than drive it.
+   *
+   * WebKit gives the platform the last word on playback: what may start, what
+   * keeps its permission across a source change, what autoplay continues to
+   * when a track ends. Every attempt to win that argument from script —
+   * turning YouTube's autonav off, pushing a track back at a handover,
+   * unmuting a muted autoplay — ended in another arbitration rule, and the
+   * rules ended in the reported "one video plays and the queue stops"
+   * (2026-09-15). So on WebKit the engine does not contest ownership of
+   * playback at all: it instructs the player only from inside a press, and
+   * every moment between presses it reads the player and follows. Set once
+   * at boot, by the page that knows what browser it is in.
+   */
+  follow = false
   /** When the current phantom advert began; undefined while none is claimed. */
   private adPausedSince: number | undefined
   /** Whether sound was coming out at the last look, for a player swapped under us. */
@@ -369,17 +385,28 @@ export class Engine {
       // on the promotion having worked.
     }
     player.addEventListener('onStateChange', this.onStateChange)
-    disableAutonav()
-    setTimeout(disableAutonav, 2000)
-    this.applyVolume()
+    // The page's own queue stays on where the platform owns playback: its
+    // autoplay is part of the behaviour the reader bought, and fighting it
+    // from a timer is the habit this mode exists to drop.
+    if (!this.follow) {
+      disableAutonav()
+      setTimeout(disableAutonav, 2000)
+    }
+    this.applyVolume(!this.follow)
     this.applyRate()
     this.applyQuality()
-    this.holdArrival()
+    // An arrival is held down only where our queue owns the player. On
+    // WebKit the page's own start is the platform's business, and the cursor
+    // follows whatever it starts.
+    if (!this.follow) this.holdArrival()
     this.adoptPlaying()
     // A player swapped out from under a playing track takes the sound with it.
     // The new one knows nothing about what was playing, so it is told — the
     // alternative is music that stops when the page rearranges itself, with
-    // nothing in the transport to say why.
+    // nothing in the transport to say why. In follow mode the new player is
+    // read, not told: a rebuild around a platform handover is followed the
+    // same way the handover itself is, and nothing is pushed at the fresh
+    // element from outside a press.
     if (swapped && this.loadedId !== undefined && this.wasSounding && !this.wantPaused && this.gaveUpOn !== this.loadedId) {
       const named = this.namedVideo()
       // A new player that already has our track is not a player to push a
@@ -388,7 +415,7 @@ export class Engine {
       if (named === this.loadedId) {
         this.wantsPlaying = true
         this.wantsSound = true
-      } else {
+      } else if (!this.follow) {
         this.repush(this.loadedId)
       }
     }
@@ -820,6 +847,11 @@ export class Engine {
     if (id === undefined || id === this.gaveUpOn) return false
     // Nothing is meant to be playing: paused, asleep, or the queue has run out.
     if (!this.wantsSound) return false
+    // The ladder is how a driver answers for a player that will not play. In
+    // follow mode nobody is driving between presses: a track that will not
+    // start is a press away, and moving or reloading the page for it would be
+    // spending the reader's address on an argument with the platform.
+    if (this.follow) return false
     // A track loaded and waiting for a press is not a track in trouble — but
     // only a loaded one. A refusal over an element with nothing in it is not a
     // press away from anything, and taking it for one would leave a dead
@@ -1030,6 +1062,7 @@ export class Engine {
     sinceProgress: number
     advert: boolean
     failing: boolean
+    follow: boolean
   } {
     return {
       wants: this.wantsSound,
@@ -1042,6 +1075,7 @@ export class Engine {
       sinceProgress: this.progressAt === 0 ? -1 : Date.now() - this.progressAt,
       advert: this.adBlocking(),
       failing: this.needsRescue(),
+      follow: this.follow,
     }
   }
 
@@ -1115,12 +1149,17 @@ export class Engine {
     if (!p) return
     // YouTube rebuilds and re-enables this control as videos change. Turning it
     // off only at attach left its automatic next free to race our queue after
-    // the first track, so keep the page's queue out on every existing tick.
-    disableAutonav()
+    // the first track, so keep the page's queue out on every existing tick —
+    // but only where our queue owns the player at all.
+    if (!this.follow) disableAutonav()
     this.watchElement()
     this.probeVolume()
     if (this.holding && this.sounding()) this.putDown()
-    if (this.sounding()) this.syncMute()
+    // Between presses the mute is only ever enforced, never lifted: on WebKit
+    // the unmute belongs to a press, and a tick that lifts the platform's
+    // muted autoplay is the one script action it answers with a pause. The
+    // press paths call for the unmute themselves.
+    if (this.sounding()) this.syncMute(!this.follow)
     const s = p.getPlayerState()
     // A load is pending until the player is actually underway on the track we
     // asked for; `loading` is dropped the moment it is, so it means "this load
@@ -1138,8 +1177,19 @@ export class Engine {
     const settledAfterAd = Date.now() - this.adSeenAt > AD_SETTLE_MS
     const named = this.namedVideo()
     const expected = this.loadedId ?? this.current?.videoId
-    const unsolicited = !!named && expected === undefined && !this.wantsSound && this.sounding()
-    const foreign = !ad && settledAfterAd && (unsolicited || (!!named && !!expected && named !== expected))
+    // Nothing is foreign where the platform owns playback: there is no other
+    // owner to take the element from, so there is nothing to reject.
+    const unsolicited = !this.follow && !!named && expected === undefined && !this.wantsSound && this.sounding()
+    const foreign = !this.follow && !ad && settledAfterAd && (unsolicited || (!!named && !!expected && named !== expected))
+    // Where the platform owns playback, the player's word is the queue's word:
+    // whatever it names that sits in our queue is where the cursor is. No
+    // grace period, no second condition — nothing is being contested while
+    // nobody is pressing — and what it names outside the queue is the
+    // platform's own business, left to play.
+    if (this.follow && this.loading === undefined && named !== undefined && named !== this.loadedId) {
+      const i = this.state.queue.findIndex((t) => t.videoId === named)
+      if (i >= 0 && i !== this.state.index) this.followInto(i, named)
+    }
     if (foreign) this.foreignSince ??= Date.now()
     else {
       this.foreignSince = undefined
@@ -1195,6 +1245,7 @@ export class Engine {
     // Once per load, and only once the element has been playing the right
     // video for a moment, so an ordinary slow load is left alone.
     if (
+      !this.follow &&
       this.loadedId !== undefined &&
       s === State.Unstarted &&
       this.repushedFor !== `${this.loadSeq}:${this.state.rate}` &&
@@ -1429,11 +1480,11 @@ export class Engine {
     return this.userMuted || this.state.volume === 0
   }
 
-  private applyVolume(): void {
+  private applyVolume(unmute = true): void {
     const p = this.player
     if (!p) return
     p.setVolume(this.state.volume)
-    this.syncMute()
+    this.syncMute(unmute)
   }
 
   /**
@@ -1454,11 +1505,13 @@ export class Engine {
    *
    * Now it is one-way. `userMuted` and a volume of zero are the only things
    * that mute, and anything the page muted for a preview or an autoplay is
-   * undone. Called on every press that starts sound and on every tick, since
-   * a press is where the platform lets script change it and a tick is where a
-   * later mute would be noticed.
+   * undone — from a press, which is where the platform lets script change
+   * it. Between presses (`unmute === false`, the tick and the attach in
+   * follow mode) only the mute half runs: lifting the platform's muted
+   * autoplay outside a gesture is the one script action WebKit answers with
+   * a pause.
    */
-  private syncMute(): void {
+  private syncMute(unmute = true): void {
     const el = this.videoEl()
     if (this.muted) {
       try {
@@ -1469,6 +1522,7 @@ export class Engine {
       if (el && !el.muted) el.muted = true
       return
     }
+    if (!unmute) return
     try {
       if (this.player?.isMuted() === true) this.player.unMute()
     } catch {
@@ -1723,7 +1777,8 @@ export class Engine {
       }
       this.applyRate()
       // Pressing a track is asking to hear it. If the page handed us a player
-      // it had muted for its own preview, that mute goes now.
+      // it had muted for its own preview, that mute goes now: a press is the
+      // gesture the unmute needs.
       this.syncMute()
     } else {
       setQuickOn(true)
@@ -1965,6 +2020,32 @@ export class Engine {
     }
     this.state.index = i
     this.load()
+    this.changed()
+  }
+
+  /**
+   * Moves the cursor to a track the player took for itself.
+   *
+   * The media is already playing; the queue is only catching up with the
+   * platform's decision, so nothing is loaded, pushed or asked. The outgoing
+   * track's end is closed so a late word about it cannot move the cursor
+   * twice, and the bookkeeping starts clean for the track now heard.
+   */
+  private followInto(i: number, named: string): void {
+    this.endedFor = this.current?.videoId
+    this.state.index = i
+    this.loadedId = named
+    this.rescue = { id: '' }
+    this.rescueAt = 0
+    this.gaveUpOn = undefined
+    this.trouble = undefined
+    this.wantsSound = true
+    this.wantsPlaying = false
+    this.wantPaused = false
+    this.foreignSince = undefined
+    this.foreignPushFor = -1
+    const track = this.current
+    if (track) remember(track)
     this.changed()
   }
 

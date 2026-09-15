@@ -28,12 +28,14 @@ export type Fault =
   | 'keeps-previous'
   | 'paused-buffering'
   | 'no-player'
+  | 'unlock-once'
 
 export interface LabConfig {
   fault?: Fault
   watch?: Fault
   reload?: Fault
   dead?: string[]
+  follow?: boolean
 }
 
 export interface LabView {

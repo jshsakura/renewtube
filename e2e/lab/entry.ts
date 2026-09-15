@@ -49,6 +49,14 @@ export type Fault =
   | 'paused-buffering'
   /** No player in the page at all: the case that has to navigate to find one. */
   | 'no-player'
+  /**
+   * WebKit's own rules, the way Orion on an iPhone enforces them: `play()`
+   * needs the element unlocked by a gesture, an unlock dies with the element
+   * it unlocked, and script unmuting a muted-autoplay start without a
+   * gesture pauses the element (2026-09-15, "오리온 브라우저에 맡긴 자동
+   * 재생등이 반드시 하나만 나오고 끝나는").
+   */
+  | 'unlock-once'
 
 export interface LabConfig {
   fault?: Fault
@@ -58,6 +66,8 @@ export interface LabConfig {
   reload?: Fault
   /** When given, only these videos misbehave and everything else is healthy. */
   dead?: string[]
+  /** Runs the engine the way WebKit pages do: following the player. */
+  follow?: boolean
 }
 
 const CONFIG_KEY = 'lab:config'
@@ -102,6 +112,19 @@ function countVisit(): number {
  * to lift it or the test could only ever watch it fail.
  */
 let gestureGiven = false
+
+/**
+ * When a press's gesture can still be counted on, measured from the press.
+ *
+ * A real press carries a short-lived activation; calls made inside it are the
+ * ones WebKit lets through. The unlock-once behaviour is gated on this the way
+ * the platform gates its own permissions.
+ */
+let gestureActiveUntil = 0
+const noteGesture = (): void => {
+  gestureGiven = true
+  gestureActiveUntil = Date.now() + 150
+}
 
 const config = readConfig()
 const visit = countVisit()
@@ -193,7 +216,10 @@ interface Fake {
   video: FakeVideo
 }
 
-function build(): Fake {
+/** The handover the platform performed on this build, if it performed one. */
+let delegateFn: ((id: string, opts: { muted: boolean; fresh: boolean }) => void) | undefined
+
+function build(init?: { id: string; muted: boolean }): Fake {
   const host = document.getElementById('stage')!
   host.textContent = ''
   const video = makeVideo()
@@ -215,6 +241,32 @@ function build(): Fake {
   let pausedBufferingScheduled = false
   const listeners = new Map<string, Array<(...a: unknown[]) => void>>()
 
+  // WebKit's per-element memory, replaced with the element: a gesture unlock
+  // belongs to the one media element that was played, and a page that hands
+  // its media over muted keeps the unmute behind a gesture of its own.
+  let elementUnlocked = false
+  let mutedAutoplay = false
+  let mutedVal = false
+  Object.defineProperty(video, 'muted', {
+    get: () => mutedVal,
+    set: (v: boolean) => {
+      mutedVal = v
+      if (
+        !v &&
+        mutedAutoplay &&
+        faultFor(loaded ?? '') === 'unlock-once' &&
+        !elementUnlocked &&
+        Date.now() >= gestureActiveUntil
+      ) {
+        s.paused = true
+        if (state === 1) state = 2
+        fire('pause')
+        emit('onStateChange')
+      }
+    },
+    configurable: true,
+  })
+
   const emit = (name: string): void => {
     for (const fn of listeners.get(name) ?? []) fn(state)
   }
@@ -230,6 +282,10 @@ function build(): Fake {
     s.readyState = 4
     s.networkState = 2
     state = 1
+    if (Date.now() < gestureActiveUntil) {
+      elementUnlocked = true
+      mutedAutoplay = false
+    }
     fire('playing')
     emit('onStateChange')
     if (clock !== undefined) return
@@ -304,6 +360,14 @@ function build(): Fake {
     const fault = faultFor(loaded)
     if (s.error) return Promise.reject(new DOMException('failed', 'NotSupportedError'))
     if (fault === 'play-rejects' && !gestureGiven) return Promise.reject(new DOMException('gesture', 'NotAllowedError'))
+    if (
+      fault === 'unlock-once' &&
+      !mutedVal &&
+      !elementUnlocked &&
+      Date.now() >= gestureActiveUntil
+    ) {
+      return Promise.reject(new DOMException('gesture', 'NotAllowedError'))
+    }
     if (fault === 'dormant' || fault === 'loaded-paused' || fault === 'ad-phantom') return Promise.resolve()
     if (fault === 'stall') {
       wait()
@@ -410,6 +474,7 @@ function build(): Fake {
       if (fault === 'throws') throw new Error('lab: the player refuses')
       // Nothing loaded is nothing to play.
       if (!loaded) return
+      if (fault === 'unlock-once' && !mutedVal && !elementUnlocked && Date.now() >= gestureActiveUntil) return
       if (fault === 'dormant' || fault === 'loaded-paused' || fault === 'ad-phantom') return
       if (fault === 'play-rejects' && !gestureGiven) return
       if (fault === 'error' || fault === 'slow' || fault === 'stall') return
@@ -479,6 +544,31 @@ function build(): Fake {
     },
   }
   Object.assign(player, api)
+  /**
+   * The platform hands its media over (2026-09-15, iOS autoplay delegation):
+   * the outgoing video never announces its end, the player renames itself to
+   * the next media, and the element restarts under the muted-autoplay rules.
+   */
+  const handOver = (id: string, muted: boolean): void => {
+    log('handover', id)
+    loaded = id
+    s.error = null
+    s.ended = false
+    s.currentTime = 0
+    s.readyState = 4
+    s.networkState = 2
+    mutedVal = muted
+    mutedAutoplay = muted
+    start()
+  }
+  delegateFn = (id, opts) => {
+    if (opts.fresh) {
+      build({ id, muted: opts.muted })
+      return
+    }
+    handOver(id, opts.muted)
+  }
+  if (init) handOver(init.id, init.muted)
   return { player, video }
 }
 
@@ -501,6 +591,7 @@ Object.defineProperty(navigator, 'mediaSession', {
 })
 
 const engine = new Engine()
+engine.follow = config.follow === true
 installNativeNext(engine)
 if (pageFault !== 'no-player') build()
 const found = document.getElementById('movie_player') as YtPlayer | null
@@ -546,7 +637,7 @@ const lab = {
   },
   /** A press, which is also the gesture a browser may have been holding out for. */
   toggle() {
-    gestureGiven = true
+    noteGesture()
     engine.toggle()
   },
   /** Runs the track to its last moment, so the end of one can be tested in a second. */
@@ -577,8 +668,17 @@ const lab = {
     p?.loadVideoById(id)
     p?.playVideo()
   },
+  /**
+   * The platform's autoplay delegation: the shared media is handed to `id`
+   * without our engine asking, the outgoing track never announces its end,
+   * and the handover starts muted, on a fresh element when the page built one.
+   */
+  handOver(id: string, opts: { muted?: boolean; fresh?: boolean } = {}) {
+    delegateFn?.(id, { muted: opts.muted ?? true, fresh: opts.fresh === true })
+  },
   /** Presses a different row while the last press is still in the air. */
   jumpTo(index: number) {
+    noteGesture()
     engine.jumpTo(index)
   },
   setRepeat(mode: 'off' | 'one' | 'all') {

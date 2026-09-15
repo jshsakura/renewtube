@@ -203,6 +203,104 @@ test('an ended event advances our queue even if YouTube autonav renamed the play
   await expect.poll(async () => (await view(page)).playerVideoId, { timeout: 4000 }).toBe('v2')
 })
 
+test("follow mode: the queue follows a platform handover without fighting it", async ({ page }) => {
+  // WebKit owns playback, so there the engine follows: it instructs the
+  // player only from inside a press, and between presses it reads. iOS hands
+  // the shared media to the next video without ever announcing the end of the
+  // outgoing one (2026-09-15, "오리온 브라우저에 맡긴 자동 재생등이 반드시
+  // 하나만 나오고 끝나는"); the queue must simply arrive where the player
+  // already is, and push nothing at what is playing.
+  await lab(page, { fault: 'healthy', follow: true })
+  await playQueue(page, 3)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { handOver(id: string): void } }).LAB.handOver('v2'))
+
+  await expect.poll(async () => (await view(page)).index, { timeout: 8000 }).toBe(1)
+  await expect.poll(async () => (await view(page)).sounding, { timeout: 5000 }, 'the handed-over media was never stopped').toBe(true)
+  const v = await view(page)
+  expect(v.playingTitle).toBe('track 2')
+  expect(v.playerVideoId).toBe('v2')
+  // And nothing was loaded or pushed at the player after the handover.
+  const log = await labLog(page)
+  const handoverAt = log.findIndex((line) => line.what === 'handover')
+  expect(log.slice(handoverAt + 1).some((line) => line.what === 'loadVideoById')).toBe(false)
+
+  // A followed track is an ordinary queue member: its own end advances again.
+  await page.evaluate(() => (window as unknown as { LAB: { skipToEnd(): void } }).LAB.skipToEnd())
+  await expect.poll(async () => (await view(page)).playingTitle, { timeout: 15_000 }).toBe('track 3')
+  await expectSound(page, 10_000)
+})
+
+test('follow mode leaves the video the platform plays to its own devices', async ({ page }) => {
+  // Following means following: a video outside our queue is the platform's
+  // own business. Nothing is paused, nothing is pushed back, and the queue
+  // keeps its cursor for the next press.
+  await lab(page, { fault: 'healthy', follow: true })
+  await playQueue(page, 3)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { handOver(id: string): void } }).LAB.handOver('outside'))
+  await page.waitForTimeout(3500)
+  const v = await view(page)
+  expect(v.playerVideoId).toBe('outside')
+  expect(v.sounding, 'the platform\'s own video is left playing').toBe(true)
+  expect(v.index).toBe(0)
+  expect(v.trouble).toBeUndefined()
+  const log = await labLog(page)
+  const handoverAt = log.findIndex((line) => line.what === 'handover')
+  expect(log.slice(handoverAt + 1).some((line) => line.what === 'loadVideoById' || line.what === 'pauseVideo')).toBe(false)
+})
+
+test('follow mode keeps a muted handover playing and takes the sound back at a press', async ({ page }) => {
+  // The platform's handover starts muted, and script unmuting it without a
+  // gesture is what pauses it. Between presses the engine must not be the one
+  // to lift that mute; a press on a row is, and from there the sound runs.
+  await lab(page, { fault: 'unlock-once', follow: true })
+  await playQueue(page, 3)
+  // A first press, the gesture this page plays nothing without.
+  await page.evaluate(() => (window as unknown as { LAB: { toggle(): void } }).LAB.toggle())
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { handOver(id: string): void } }).LAB.handOver('v2'))
+
+  await expect.poll(async () => (await view(page)).index, { timeout: 8000 }).toBe(1)
+  expect((await view(page)).playerVideoId).toBe('v2')
+  // Muted by the platform, still playing, and never paused by our own unmute.
+  expect(await page.evaluate(() => document.querySelector('video')?.muted)).toBe(true)
+  expect(await page.evaluate(() => document.querySelector('video')?.paused)).toBe(false)
+  expect((await view(page)).trouble).toBeUndefined()
+
+  // Pressing the row it is on is the gesture the sound was waiting for.
+  await page.evaluate(() => (window as unknown as { LAB: { jumpTo(i: number): void } }).LAB.jumpTo(1))
+  await expect.poll(() => page.evaluate(() => document.querySelector('video')?.muted ?? true), { timeout: 5000 }).toBe(false)
+  await expectSound(page, 5000)
+})
+
+test('follow mode follows a handover onto a fresh element across the rebuild', async ({ page }) => {
+  // The platform can also hand its media to a page that rebuilt the player:
+  // a new element that was never unlocked by a press, already running muted.
+  // The cursor must still arrive at what the new player names, the mute must
+  // survive our own tick, and a press must reach the new element.
+  await lab(page, { fault: 'unlock-once', follow: true })
+  await playQueue(page, 3)
+  // A first press, the gesture this page plays nothing without.
+  await page.evaluate(() => (window as unknown as { LAB: { toggle(): void } }).LAB.toggle())
+  await expectSound(page, 10_000)
+  await page.evaluate(
+    () => (window as unknown as { LAB: { handOver(id: string, opts?: { fresh?: boolean }): void } }).LAB.handOver('v2', { fresh: true }),
+  )
+
+  await expect.poll(async () => (await view(page)).index, { timeout: 12_000 }).toBe(1)
+  const v = await view(page)
+  expect(v.playingTitle).toBe('track 2')
+  expect(v.playerVideoId).toBe('v2')
+  expect(v.trouble).toBeUndefined()
+  expect(await page.evaluate(() => document.querySelector('video')?.muted)).toBe(true)
+  expect(await page.evaluate(() => document.querySelector('video')?.paused)).toBe(false)
+
+  await page.evaluate(() => (window as unknown as { LAB: { jumpTo(i: number): void } }).LAB.jumpTo(1))
+  await expect.poll(() => page.evaluate(() => document.querySelector('video')?.muted ?? true), { timeout: 5000 }).toBe(false)
+  await expectSound(page, 5000)
+})
+
 test('a video YouTube autoplays outside the queue is rejected', async ({ page }) => {
   // The phone showed one title in the bar and another video in the picture
   // (2026-09-09, "화면에보이는 영상하고 하단 재생기의 영상이 다른시점").

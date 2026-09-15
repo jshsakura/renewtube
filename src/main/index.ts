@@ -186,6 +186,11 @@ async function start(): Promise<void> {
     if (!cfg) throw new InnertubeError('ytcfg never appeared', 'shape')
 
     const engine = new Engine()
+    // WebKit keeps the last word on playback (what may start, what an autoplay
+    // may continue to), and every attempt to win that argument from script
+    // became another arbitration rule. There the queue follows the player
+    // instead of driving it; the engine only instructs from inside a press.
+    engine.follow = 'webkitSetPresentationMode' in document.createElement('video')
     // The honest-departure hook (pagehide among them) is also the last chance
     // to write down where in the track the listener was: a reload reads it
     // back on arrival and resumes at that second rather than from zero.

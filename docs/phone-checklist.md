@@ -15,6 +15,12 @@ Start a track from the RenewTube home screen, then keep it playing throughout.
   **Fail if:** the picture snags, flashes, covers the header, or separates from its black slot.
 - [ ] **Dark and light (10 seconds).** Switch once to dark and once to light while the track keeps playing.
   **Fail if:** a pane disappears, stays black, shows the old theme, or playback/picture placement changes.
+- [ ] **Handed-over autoplay keeps going (Orion, 20 seconds).** Let one track finish on its own and
+  watch the queue move to the next one, twice in a row, without touching the screen. If the next
+  track starts silent, tap anywhere once: the sound must come back within a beat.
+  **Fail if:** playback stops after one track, the bar and the picture name different videos, or
+  the sound never returns after a tap (2026-09-15, "오리온 브라우저에 맡긴 자동 재생등이
+  반드시 하나만 나오고 끝나는").
 
 Any failure blocks the release. Record the device, iOS version, browser, theme,
 and the exact transition that produced it.
