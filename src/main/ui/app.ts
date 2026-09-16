@@ -231,8 +231,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
    *
    * The sidebar pair is always there for a pointer to find — disabled when the
    * lists behind it are empty, the way a browser's chrome is. The phone's
-   * header strip is narrower, so there the buttons arrive only when they have
-   * somewhere to go.
+   * header strip carries them at the very end of the row, back outermost
+   * (2026-09-16, "우상단인데 가장 우측이어야하는건아냐?"), and they arrive only
+   * when they have somewhere to go: the strip is one row on a small screen,
+   * and two greyed-out chevrons would spend its width saying nothing.
    */
   const stepButtons = (where: 'side' | 'top') => {
     const make = (dir: 'back' | 'forward'): HTMLElement => {
@@ -253,7 +255,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     const back = make('back')
     const forward = make('forward')
     if (where === 'top' && trail.length === 0) return []
-    return [back, forward]
+    return where === 'top' ? [forward, back] : [back, forward]
   }
 
   const ctx: Ctx = {
@@ -348,10 +350,6 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // from being too far for it.
     replace(
       top,
-      // The steps arrive only when they have somewhere to go: the strip is one
-      // row on a phone, and two greyed-out chevrons in front of the name would
-      // spend its width saying nothing.
-      ...stepButtons('top'),
       menuButton,
       h('div', { class: 'name' }, titleOf(ctx.view)),
       h(
@@ -360,6 +358,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         icon('search', 18),
       ),
       themeButton(true),
+      // The steps, at the end of the row: back in the corner a thumb owns.
+      ...stepButtons('top'),
     )
   }
 

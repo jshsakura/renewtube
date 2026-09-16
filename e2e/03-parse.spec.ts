@@ -121,3 +121,67 @@ test('a members-only video is unavailable in every shape it arrives in', () => {
   expect(dead.get('m-music')).toBe(true)
   expect(dead.get('fine')).toBe(false)
 })
+
+// ── The channel of a row, from the feeds that were not asked ────────────────
+//
+// Music rows, mix panels and TV tiles carried no channelId at all, and every
+// 채널 열기 affordance is drawn only when it exists — so a queue built from
+// those feeds had channel names that went nowhere (2026-09-16, "채널명이 아예
+// 안뜨기시작했네 … 상세에서도안나오고").
+
+test('a mix panel and a music row carry their channel too', () => {
+  const res = {
+    contents: [
+      {
+        playlistPanelVideoRenderer: {
+          videoId: 'q1',
+          title: { simpleText: 'from a mix' },
+          shortBylineText: { runs: [{ text: 'someone', navigationEndpoint: { browseEndpoint: { browseId: 'UCmix1' } } }] },
+          lengthText: { simpleText: '3:00' },
+        },
+      },
+      {
+        musicResponsiveListItemRenderer: {
+          playlistItemData: { videoId: 'q2' },
+          flexColumns: [
+            { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'from the music feed' }] } } },
+            { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'someone', navigationEndpoint: { browseEndpoint: { browseId: 'UCmusic1' } } }] } } },
+          ],
+        },
+      },
+    ],
+  }
+  const got = tracks(res)
+  const ids = new Map(got.map((t) => [t.videoId, t.channelId]))
+  expect(ids.get('q1')).toBe('UCmix1')
+  expect(ids.get('q2')).toBe('UCmusic1')
+})
+
+test('a row naming two channels says neither', () => {
+  const res = {
+    contents: [
+      {
+        playlistPanelVideoRenderer: {
+          videoId: 'q3',
+          title: { simpleText: 'a collaboration' },
+          // The byline is a plain text run with no endpoint of its own.
+          shortBylineText: { runs: [{ text: 'one · two' }] },
+          lengthText: { simpleText: '3:00' },
+          // Two different channels elsewhere in the row: with nothing to
+          // prefer, the whole-row fallback must not pick either.
+          menu: {
+            menuRenderer: {
+              items: [
+                { menuServiceItemRenderer: { navigationEndpoint: { browseEndpoint: { browseId: 'UConw' } } } },
+                { menuServiceItemRenderer: { navigationEndpoint: { browseEndpoint: { browseId: 'UCtwo' } } } },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  }
+  const [row] = tracks(res)
+  expect(row?.byline).toBe('one · two')
+  expect(row?.channelId).toBeUndefined()
+})

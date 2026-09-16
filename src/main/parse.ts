@@ -67,6 +67,14 @@ export interface Track {
    * The byline is a name and names are not identity: two channels may share
    * one, and a channel may rename itself between two screens. Anything that
    * has to remember a channel remembers this instead.
+   *
+   * Every parser asks `channelIdOf`, the conservative way: the byline's own
+   * endpoint first, and only when the row names exactly one channel. A row
+   * that cannot say leaves it out, and the 채널 열기 affordances stay hidden
+   * for it — which is why a feed whose parser skips the question (music rows,
+   * mix panels and TV tiles once did) reads as "channel names stopped
+   * working" the moment the listener looks for them (2026-09-16, "채널명이
+   * 아예 안뜨기시작했네").
    */
   channelId?: string
   /**
@@ -294,6 +302,7 @@ function tracksFromTiles(root: unknown): Track[] {
       // not a byline and would read as one if both were taken.
       byline: text(findFirst(lines[0], 'text')),
       duration: text(findFirst(item.header, 'thumbnailOverlayTimeStatusRenderer') && findFirst(findFirst(item.header, 'thumbnailOverlayTimeStatusRenderer'), 'text')),
+      channelId: channelIdOf(item),
       unavailable: membersOnly(item),
     })
   }
@@ -313,6 +322,7 @@ function tracksFromQueue(root: unknown): Track[] {
       byline: text(item.shortBylineText) || text(item.longBylineText),
       duration: text(item.lengthText),
       setVideoId: typeof item.playlistSetVideoId === 'string' ? item.playlistSetVideoId : undefined,
+      channelId: channelIdOf(item),
       unavailable: item.unplayableText !== undefined || membersOnly(item),
     })
   }
@@ -403,6 +413,7 @@ function tracksFromMusic(root: unknown): Track[] {
       byline: columns.slice(1).join(' · '),
       duration: '',
       setVideoId: setVideoIdOf(item),
+      channelId: channelIdOf(item),
       unavailable: membersOnly(item),
     })
   }
@@ -415,6 +426,7 @@ function tracksFromMusic(root: unknown): Track[] {
       title: text(item.title),
       byline: text(item.subtitle),
       duration: '',
+      channelId: channelIdOf(item),
       unavailable: membersOnly(item),
     })
   }
