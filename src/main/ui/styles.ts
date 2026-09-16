@@ -418,6 +418,10 @@ input { font: inherit; color: inherit; }
 }
 .headAction:hover { color: var(--foreground); background: var(--hover); }
 .headAction:active { background: var(--secondary); }
+/* A step with nowhere to go. Present rather than hidden — a pointer that has
+   learned the corner should find it working the same way every time. */
+.headAction:disabled { opacity: .38; cursor: default; }
+.headAction:disabled:hover { color: var(--muted-foreground); background: transparent; }
 
 /* ── The header strip, on a narrow screen only ───────────────────────────── */
 .top { display: none; }
@@ -612,7 +616,11 @@ input { font: inherit; color: inherit; }
 .row .title { font-size: 14px; font-weight: 500; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .by { color: var(--muted-foreground); font-size: 13px; line-height: 1.25; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .channelLink { cursor: pointer; text-align: left; }
-.channelLink:hover, .channelLink:focus-visible { color: var(--foreground); text-decoration: underline; }
+/* A channel link is a button, not a document link: the colour answers the
+   pointer and the underline never arrives. After a jump to a channel the
+   affordance left behind on a focused byline read as text formatting, not as
+   a way back (2026-09-16, "요소에 밑줄 긋는거좀 자제하고"). */
+.channelLink:hover, .channelLink:focus-visible { color: var(--foreground); }
 .row .dur { color: var(--muted-foreground); font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
 .row .more, .row .quick {
   width: 32px; height: 32px; border-radius: var(--radius-md);

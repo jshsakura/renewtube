@@ -93,6 +93,8 @@ export const ID: Record<string, string> = {
   "대기열이 비어 있습니다.": "Antrean kosong.",
   "대기열에서 빼기": "Hapus dari antrean",
   "더보기": "Lainnya",
+  "뒤로": "Kembali",
+  "앞으로": "Maju",
   "지금 재생": "Putar sekarang",
   "다음에 재생": "Putar berikutnya",
   "이 곡으로 라디오": "Mulai radio",

@@ -109,6 +109,11 @@ function isTyping(el: Element | null): boolean {
  */
 export function installRemote(root: ShadowRoot, overlay: ShadowRoot): () => void {
   const onKey = (ev: KeyboardEvent) => {
+    // A modified key is not a remote press. Alt and the arrows are the
+    // browser's own history steps — taken further down the same document, in
+    // the shortcuts — and a Ctrl or Cmd combination belongs to whoever asked
+    // for it, never to a focus walk.
+    if (ev.altKey || ev.ctrlKey || ev.metaKey) return
     // The topmost floating thing, if any, keeps the arrows to itself unless it
     // says otherwise. A menu and a dialog drive themselves; a panel that is a
     // whole screen of things to reach (the search) carries data-remote, and

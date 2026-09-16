@@ -93,6 +93,8 @@ export const DE: Record<string, string> = {
   "대기열이 비어 있습니다.": "Die Warteschlange ist leer.",
   "대기열에서 빼기": "Aus Warteschlange entfernen",
   "더보기": "Mehr",
+  "뒤로": "Zurück",
+  "앞으로": "Vor",
   "지금 재생": "Jetzt abspielen",
   "다음에 재생": "Als Nächstes abspielen",
   "이 곡으로 라디오": "Radio starten",

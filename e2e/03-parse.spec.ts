@@ -64,3 +64,60 @@ test('and the same channel keeps one id across its rows', () => {
   for (const [, ids] of byName) expect(ids.size).toBe(1)
   expect(new Set(got.map((t) => t.channelId)).size).toBe(3)
 })
+
+// ── Members-only ───────────────────────────────────────────────────────────
+//
+// The badge arrives in three shapes: the classic renderer's style field, the
+// 2025 lockup's badgeViewModel, and the music rows' badges. A miss on any of
+// them was a members-only video reaching a queue, and its press a black stage
+// with nothing saying why (2026-09-16, "재생할수없는건 애초에담지말자
+// 화면에서 지우진말고").
+
+test('a members-only video is unavailable in every shape it arrives in', () => {
+  const res = {
+    contents: [
+      {
+        videoRenderer: {
+          videoId: 'm-classic',
+          title: { simpleText: 'members only, classic badge' },
+          ownerText: { simpleText: 'someone' },
+          lengthText: { simpleText: '3:21' },
+          badges: [{ metadataBadgeRenderer: { style: 'BADGE_STYLE_TYPE_MEMBERS_ONLY', label: '회원 전용' } }],
+        },
+      },
+      {
+        lockupViewModel: {
+          contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+          contentId: 'm-lockup',
+          metadata: { title: { content: 'members only, 2025 badge' } },
+          badges: [{ badgeViewModel: { badgeText: 'Members only', badgeStyle: 'BADGE_STYLE_TYPE_MEMBERS_ONLY' } }],
+        },
+      },
+      {
+        musicResponsiveListItemRenderer: {
+          playlistItemData: { videoId: 'm-music' },
+          flexColumns: [
+            { musicResponsiveListItemFlexColumnRenderer: { text: { simpleText: 'members only, music row' } } },
+            { musicResponsiveListItemFlexColumnRenderer: { text: { simpleText: 'someone' } } },
+          ],
+          badges: [{ badgeViewModel: { badgeText: '회원 전용' } }],
+        },
+      },
+      {
+        videoRenderer: {
+          videoId: 'fine',
+          title: { simpleText: 'an ordinary video' },
+          ownerText: { simpleText: 'someone' },
+          lengthText: { simpleText: '4:00' },
+          badges: [{ metadataBadgeRenderer: { style: 'BADGE_STYLE_TYPE_DEFAULT', label: '4K' } }],
+        },
+      },
+    ],
+  }
+  const got = tracks(res)
+  const dead = new Map(got.map((t) => [t.videoId, t.unavailable]))
+  expect(dead.get('m-classic')).toBe(true)
+  expect(dead.get('m-lockup')).toBe(true)
+  expect(dead.get('m-music')).toBe(true)
+  expect(dead.get('fine')).toBe(false)
+})

@@ -140,6 +140,46 @@ test('a video channel name opens that channel, and the player exposes share', as
   }
 })
 
+test('the step buttons return from a channel and go forward again', async () => {
+  // A jump into a channel used to be one-way for a pointer: the trail existed
+  // for the phone's edge swipe and nothing else (2026-09-16, "갔다가 되돌아올
+  // 방법이없어 앞뒤로 이동할 수단이 필요하지않냐"). The sidebar carries the
+  // pair now, and the keyboard has the browser's own keys for them.
+  const h = await open('https://www.youtube.com/')
+  try {
+    await serveSubs(h.page)
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    await ui.locator('.nav', { hasText: '구독' }).click()
+
+    const first = parsed[0]!
+    const leaving = await ui.locator('.main h2').textContent()
+    await ui.locator('.channelLink', { hasText: first.byline }).first().click()
+    await expect(ui.locator('.main h2')).toHaveText(first.byline)
+
+    const back = ui.locator('.sideHead .step.back')
+    const forward = ui.locator('.sideHead .step.forward')
+    await expect(back).toBeEnabled()
+    await back.click()
+    await expect(ui.locator('.main h2')).toHaveText(leaving ?? '')
+    await expect(forward).toBeEnabled()
+    await forward.click()
+    await expect(ui.locator('.main h2')).toHaveText(first.byline)
+
+    // The browser's own keys, both directions.
+    await h.page.keyboard.press('Alt+ArrowLeft')
+    await expect(ui.locator('.main h2')).toHaveText(leaving ?? '')
+    await h.page.keyboard.press('Alt+ArrowRight')
+    await expect(ui.locator('.main h2')).toHaveText(first.byline)
+
+    // A fresh destination ends the forward road.
+    await ui.locator('.nav', { hasText: '구독' }).click()
+    await expect(forward).toBeDisabled()
+  } finally {
+    await h.close()
+  }
+})
+
 test('nothing reaches the player while the checklist is open', async () => {
   const h = await open('https://www.youtube.com/')
   try {

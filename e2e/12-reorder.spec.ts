@@ -46,6 +46,51 @@ test('an empty queue has no index to move', () => {
   expect(movedIndex(-1, 0, 3)).toBe(-1)
 })
 
+// ── What a queue may hold ──────────────────────────────────────────────────
+
+test('a stored queue comes back without the rows it could not play', async () => {
+  // The reader's rule, 2026-09-16: "재생할수없는건 애초에담지말자 화면에서
+  // 지우진말고". A queue stored by an older build — or a ladder that gave up
+  // mid-listen — may still carry a dead row; it leaves at the door, and the
+  // cursor stays on the track it was on.
+  const h = await open('https://www.youtube.com/')
+  try {
+    const ui = app(h.page)
+    await expect(ui.locator('.app')).toBeVisible()
+    // The harness's background answers musicMode: false and clears the quick
+    // flag while the app is up; set both again for the load that follows.
+    await h.page.addInitScript(() => {
+      try {
+        localStorage.setItem('oc-easy-mode:on', '1')
+        localStorage.setItem('oc-easy-mode:state', JSON.stringify({
+          lang: 'ko',
+          queue: [
+            { videoId: 'alive1', title: 'alive one', byline: 'lab', duration: '0:30', unavailable: false },
+            { videoId: 'dead', title: 'dead one', byline: 'lab', duration: '0:30', unavailable: true },
+            { videoId: 'alive2', title: 'alive two', byline: 'lab', duration: '0:30', unavailable: false },
+          ],
+          index: 2,
+          video: 'hidden',
+        }))
+      } catch {}
+    })
+    await h.page.reload()
+    await expect(ui.locator('.app')).toBeVisible()
+
+    await ui.locator('.nav', { hasText: '대기열' }).click()
+    const titles = await ui.locator('.rows .row .title').allTextContents()
+    expect(titles).toContain('alive two')
+    expect(titles).not.toContain('dead one')
+    const after = await queueState(h.page)
+    expect(after.ids).toEqual(['alive1', 'alive2'])
+    // The cursor is honestly empty: a browse address cannot vouch that
+    // anything is still playing, and that rule is older than this one.
+    expect(after.index).toBe(-1)
+  } finally {
+    await h.close()
+  }
+})
+
 test('the moved row is the one that lands where it was dropped', () => {
   expect(movedIndex(2, 2, 0)).toBe(0)
   expect(movedIndex(0, 0, 4)).toBe(4)

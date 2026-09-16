@@ -232,6 +232,17 @@ function membersOnly(item: Json): boolean {
   for (const badge of collect(item, 'thumbnailBadgeViewModel')) {
     if (isObject(badge) && /회원 전용|멤버십|members? only/i.test(text(badge.text))) return true
   }
+  // The 2025 lockup badge: the same mark the classic renderers wear, in the
+  // shape the newer rows carry it. Missed here, a members-only video reached
+  // the queue and its press was a black stage with nothing saying why
+  // (2026-09-16, "재생할수없는건 애초에담지말자").
+  for (const badge of collect(item, 'badgeViewModel')) {
+    if (!isObject(badge)) continue
+    const style = [badge.badgeStyle, badge.style].find((v) => typeof v === 'string') ?? ''
+    if (style === 'BADGE_STYLE_TYPE_MEMBERS_ONLY' || style === 'BADGE_STYLE_TYPE_YPC') return true
+    const label = typeof badge.badgeText === 'string' ? badge.badgeText : text(badge.text)
+    if (/회원 전용|멤버십|members? only/i.test(label)) return true
+  }
   return false
 }
 
@@ -392,7 +403,7 @@ function tracksFromMusic(root: unknown): Track[] {
       byline: columns.slice(1).join(' · '),
       duration: '',
       setVideoId: setVideoIdOf(item),
-      unavailable: false,
+      unavailable: membersOnly(item),
     })
   }
   for (const item of collect(root, 'musicTwoRowItemRenderer')) {
@@ -404,7 +415,7 @@ function tracksFromMusic(root: unknown): Track[] {
       title: text(item.title),
       byline: text(item.subtitle),
       duration: '',
-      unavailable: false,
+      unavailable: membersOnly(item),
     })
   }
   return out

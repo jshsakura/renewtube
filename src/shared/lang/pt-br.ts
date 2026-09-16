@@ -93,6 +93,8 @@ export const PT_BR: Record<string, string> = {
   "대기열이 비어 있습니다.": "A fila está vazia.",
   "대기열에서 빼기": "Remover da fila",
   "더보기": "Mais",
+  "뒤로": "Voltar",
+  "앞으로": "Avançar",
   "지금 재생": "Reproduzir agora",
   "다음에 재생": "Reproduzir a seguir",
   "이 곡으로 라디오": "Iniciar rádio",

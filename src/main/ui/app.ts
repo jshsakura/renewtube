@@ -188,6 +188,73 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   // Where you have been, so a swipe has somewhere to go. Capped, because this
   // is a back gesture and not a session log.
   const trail: View[] = []
+  // Where a back went, so forward has somewhere to go. Cleared by every fresh
+  // destination, the way a browser's forward list is.
+  const future: View[] = []
+
+  /** Puts a screen up without recording the move, which is what both step buttons and the swipe do. */
+  const show = (view: View): void => {
+    ctx.view = view
+    engine.setView(nameOf(view))
+    setLayout(pictureNow())
+    app.classList.remove('sheet-open')
+    drawTop()
+    drawSide()
+    void render(ctx, main)
+    main.scrollTop = 0
+  }
+
+  /** Steps back through the screens. */
+  function goBack(): void {
+    if (app.classList.contains('sheet-open')) return setSheet(false)
+    if (app.classList.contains('drawer-open')) return closeDrawer()
+    const previous = trail.pop()
+    if (!previous) return
+    // Not ctx.go: that would push the screen we are leaving onto the trail and
+    // the gesture would walk between two screens forever. It goes on the
+    // forward list instead, which is where a back leaves it.
+    future.push(ctx.view)
+    show(previous)
+  }
+
+  /** Steps forward again, over ground a back already covered. */
+  function goForward(): void {
+    const next = future.pop()
+    if (!next) return
+    trail.push(ctx.view)
+    if (trail.length > 20) trail.shift()
+    show(next)
+  }
+
+  /**
+   * The two steps, as buttons for whichever row this layout draws.
+   *
+   * The sidebar pair is always there for a pointer to find — disabled when the
+   * lists behind it are empty, the way a browser's chrome is. The phone's
+   * header strip is narrower, so there the buttons arrive only when they have
+   * somewhere to go.
+   */
+  const stepButtons = (where: 'side' | 'top') => {
+    const make = (dir: 'back' | 'forward'): HTMLElement => {
+      const has = dir === 'back' ? trail.length > 0 : future.length > 0
+      return h(
+        'button',
+        {
+          class: `headAction step ${dir}`,
+          'data-nav': '',
+          title: dir === 'back' ? t('뒤로') : t('앞으로'),
+          'aria-label': dir === 'back' ? t('뒤로') : t('앞으로'),
+          disabled: where === 'side' && !has,
+          onclick: () => (dir === 'back' ? goBack() : goForward()),
+        },
+        icon(dir === 'back' ? 'caretLeft' : 'caret', 18),
+      )
+    }
+    const back = make('back')
+    const forward = make('forward')
+    if (where === 'top' && trail.length === 0) return []
+    return [back, forward]
+  }
 
   const ctx: Ctx = {
     engine: opts.ctx.engine,
@@ -218,6 +285,9 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
       if (nameOf(view) !== nameOf(ctx.view)) {
         trail.push(ctx.view)
         if (trail.length > 20) trail.shift()
+        // A fresh destination is the end of the road that led back here: the
+        // forward list described a path this screen was never on.
+        future.length = 0
       }
       ctx.view = view
       engine.setView(nameOf(view))
@@ -278,6 +348,10 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     // from being too far for it.
     replace(
       top,
+      // The steps arrive only when they have somewhere to go: the strip is one
+      // row on a phone, and two greyed-out chevrons in front of the name would
+      // spend its width saying nothing.
+      ...stepButtons('top'),
       menuButton,
       h('div', { class: 'name' }, titleOf(ctx.view)),
       h(
@@ -421,6 +495,11 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
           mark(20),
           h('span', null, 'RenewTube'),
           h('div', { class: 'spacer' }),
+          // The steps, before the pane's own controls: they describe where the
+          // reading has been, and the settings that follow describe the app.
+          // Always drawn here — a pointer looks for them in one place, and
+          // finding them absent on a quiet screen is its own puzzle.
+          ...stepButtons('side'),
           // The way into the settings sheet, and out to YouTube's own pages.
           //
           // Here rather than in the header strip because it belongs to the
@@ -1318,22 +1397,6 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
     swiping = false
   }
 
-  /** Closes what is on top, else steps back through the screens. */
-  function goBack(): void {
-    if (app.classList.contains('sheet-open')) return setSheet(false)
-    if (app.classList.contains('drawer-open')) return closeDrawer()
-    const previous = trail.pop()
-    if (!previous) return
-    // Not ctx.go: that would push the screen we are leaving onto the trail and
-    // the gesture would walk between two screens forever.
-    ctx.view = previous
-    engine.setView(nameOf(previous))
-    drawTop()
-    drawSide()
-    void render(ctx, main)
-    main.scrollTop = 0
-  }
-
   app.addEventListener('touchstart', onTouchStart, { passive: true })
   app.addEventListener('touchmove', onTouchMove, { passive: true })
   app.addEventListener('touchend', onTouchEnd, { passive: true })
@@ -1371,7 +1434,7 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
   const offRemote = installRemote(shell.root, shell.overlay)
   // The keyboard, so the whole thing can be driven from a sofa. `v` reuses the
   // bar's own button rather than repeating what it decides.
-  const offKeys = installKeys(engine, { toggleVideo: () => videoButton.click(), openSearch: () => ctx.search() })
+  const offKeys = installKeys(engine, { toggleVideo: () => videoButton.click(), openSearch: () => ctx.search(), back: goBack, forward: goForward })
 
   // The picture is up while something is playing and gone when nothing is —
   // asked for in those words ("재생할때는 위쪽에 플레이어 보여주고"), and it

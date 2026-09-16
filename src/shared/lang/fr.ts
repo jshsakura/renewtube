@@ -100,6 +100,8 @@ export const FR: Record<string, string> = {
   "대기열이 비어 있습니다.": "La file d'attente est vide.",
   "대기열에서 빼기": "Retirer de la file",
   "더보기": "Plus",
+  "뒤로": "Retour",
+  "앞으로": "Suivant",
   "지금 재생": "Lire maintenant",
   "다음에 재생": "Lire ensuite",
   "이 곡으로 라디오": "Lancer la radio",

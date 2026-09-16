@@ -301,6 +301,10 @@ export class Engine {
   volumeSettable: boolean | undefined
 
   constructor() {
+    // A queue stored by an older build may still carry rows it could not play.
+    // They leave now, before anything reads the cursor, so the rest of this
+    // constructor and the arrival rules see the queue the reader will see.
+    this.pruneDead()
     // A stored queue is useful after a reload; a stored *playing index* is not
     // proof that anything is still playing. On a non-watch page there is no
     // URL naming the old track, so drawing it in the bar until some unrelated
@@ -395,10 +399,12 @@ export class Engine {
     this.applyVolume(!this.follow)
     this.applyRate()
     this.applyQuality()
-    // An arrival is held down only where our queue owns the player. On
-    // WebKit the page's own start is the platform's business, and the cursor
-    // follows whatever it starts.
-    if (!this.follow) this.holdArrival()
+    // The arrival rules run everywhere — our own marks, a continuation's
+    // place, the reloads that bring a live listen back. Only the hold is
+    // skipped where the platform owns the player: on WebKit the page's own
+    // start is the platform's business, and the cursor follows whatever it
+    // starts.
+    this.holdArrival(!this.follow)
     this.adoptPlaying()
     // A player swapped out from under a playing track takes the sound with it.
     // The new one knows nothing about what was playing, so it is told — the
@@ -529,7 +535,7 @@ export class Engine {
   private resumeAt: { id: string; t: number; tries: number; confirmedAt?: number } | undefined
   /** When the playing place was last written down, for the tick's throttle. */
   private leftAtWrittenAt = 0
-  private holdArrival(): void {
+  private holdArrival(hold = true): void {
     if (Engine.arrivalSeen) return
     Engine.arrivalSeen = true
     const ours = takeArrival()
@@ -612,6 +618,12 @@ export class Engine {
       location.assign(`/watch?v=${this.current.videoId}`)
       return
     }
+    // Only the hold is a driver's tool: pausing the page's own start until a
+    // press. Everywhere else the arrival rules are the reader's own listening
+    // coming back to them, and they run on WebKit as well — a backgrounded
+    // reload that resumed nothing was the follow mode stopping the music
+    // (2026-09-16, "원래되던 이어듣는 백그라운드재생이 갑자기안되네").
+    if (!hold) return
     this.holding = true
     this.putDown()
   }
@@ -1035,6 +1047,9 @@ export class Engine {
     // Only if it is still the track we are sitting on; the queue may have been
     // moved on by hand while the ladder was working.
     if (this.current?.videoId === id) this.next()
+    // And the row leaves rather than sitting there dead: the reader asked for
+    // it to be gone from everywhere, and a queue is somewhere.
+    this.pruneDead()
   }
 
   /**
@@ -2069,9 +2084,30 @@ export class Engine {
 
   // ── The queue ─────────────────────────────────────────────────────────────
 
+  /**
+   * The rows that may sit in a queue, and the rows that may not.
+   *
+   * A track this browser cannot play — members-only content above all — is
+   * never taken into a queue: not through a press, not through 대기열에 추가,
+   * not through a stored queue coming back on a reload (2026-09-16,
+   * "재생할수없는건 애초에담지말자"). It still shows on the screens it came
+   * from, as the dead row it is; it just never gets between the listener and
+   * the next thing that plays.
+   */
+  private alive(tracks: Track[]): Track[] {
+    return tracks.some((tr) => tr.unavailable) ? tracks.filter((tr) => !tr.unavailable) : tracks
+  }
+
   /** Replaces the queue and starts at `index`. */
-  play(tracks: Track[], index = 0): void {
+  play(listed: Track[], index = 0): void {
+    if (listed.length === 0) return
+    const tracks = this.alive(listed)
     if (tracks.length === 0) return
+    // The pressed row keeps its place relative to what survived: the count of
+    // alive rows ahead of it is where the cursor lands.
+    let at = 0
+    for (let k = 0; k < index && k < listed.length; k++) if (!listed[k]!.unavailable) at++
+    index = at
     this.state.queue = this.state.shuffle ? shuffled(tracks, index) : tracks.slice()
     this.state.index = this.state.shuffle ? 0 : index
     this.load()
@@ -2086,16 +2122,41 @@ export class Engine {
     this.changed()
   }
 
-  playNext(tracks: Track[]): void {
+  playNext(listed: Track[]): void {
+    const tracks = this.alive(listed)
     if (tracks.length === 0) return
     this.state.queue.splice(this.state.index + 1, 0, ...tracks)
     if (this.state.index < 0) this.state.index = -1
     this.changed()
   }
 
-  enqueue(tracks: Track[]): void {
+  enqueue(listed: Track[]): void {
+    const tracks = this.alive(listed)
     if (tracks.length === 0) return
     this.state.queue.push(...tracks)
+    this.changed()
+  }
+
+  /**
+   * Drops the dead rows a queue is already holding, keeping the cursor on the
+   * track it is on (or the one that took a dropped row's place).
+   */
+  private pruneDead(): void {
+    const q = this.state.queue
+    if (!q.some((tr) => tr.unavailable)) return
+    let index = this.state.index
+    const kept: Track[] = []
+    for (let i = 0; i < q.length; i++) {
+      const tr = q[i]!
+      if (tr.unavailable) {
+        if (i < index) index -= 1
+        continue
+      }
+      kept.push(tr)
+    }
+    this.state.queue = kept
+    this.state.index = Math.min(index, kept.length - 1)
+    save(this.state)
     this.changed()
   }
 

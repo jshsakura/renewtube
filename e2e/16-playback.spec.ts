@@ -140,14 +140,16 @@ test('a watch page that is dead too is rebuilt, and then plays', async ({ page }
 test('a track nothing will play is given up and the queue carries on', async ({ page }) => {
   // Every rung spent on one track. Sitting on it is the failure the listener
   // actually feels — the music simply stopped — so the queue moves on and the
-  // row is marked, and the next track plays.
+  // next track plays. The row leaves the queue entirely (2026-09-16,
+  // "재생할수없는건 애초에담지말자"): what is not in the queue cannot be
+  // walked back into either.
   await lab(page, { fault: 'dormant', watch: 'dormant', reload: 'dormant', dead: ['v1'] })
   await playQueue(page, 3)
   await expectSound(page, 45_000)
   const v = await view(page)
   expect(v.playingTitle, 'the dead track was left behind').toBe('track 2')
-  expect(v.queue[0]!.unavailable, 'and marked, so nothing walks back into it').toBe(true)
-  expect(v.index).toBe(1)
+  expect(v.queue.map((track) => track.id), 'and gone, so nothing walks back into it').toEqual(['v2', 'v3'])
+  expect(v.index).toBe(0)
 })
 
 test('a queue with nothing playable in it stops, rather than looping for ever', async ({ page }) => {
@@ -301,6 +303,45 @@ test('follow mode follows a handover onto a fresh element across the rebuild', a
   await expectSound(page, 5000)
 })
 
+test('follow mode still hands a mid-track leave back to background audio', async ({ page }) => {
+  // Following the platform changes who advances the queue, not whose job it
+  // is to keep sound through a leave: the one-shot hand-off that answers
+  // WebKit's pause belongs to the reader's listening, and it runs in follow
+  // mode exactly as it does everywhere else.
+  await lab(page, { fault: 'healthy', follow: true })
+  await playQueue(page, 2)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => (window as unknown as { LAB: { background(): void } }).LAB.background())
+  await expectSound(page, 5000)
+  expect((await view(page)).trouble).toBeUndefined()
+})
+
+test('follow mode brings a backgrounded reload back to the track and its place', async ({ page }) => {
+  // A page the platform discarded while away comes back as a reload, and the
+  // arrival rules — the mark that says this was the listen, the place it was
+  // left at, the address that names the track — are the reader's own
+  // listening returning, not a contest with the platform. Skipping them with
+  // the hold was the follow mode stopping the music for good (2026-09-16,
+  // "원래되던 이어듣는 백그라운드재생이 갑자기안되네").
+  await lab(page, { fault: 'healthy', follow: true, reload: 'healthy' })
+  await playQueue(page, 2)
+  await expectSound(page, 10_000)
+  await page.evaluate(() => {
+    const v = document.querySelector('video')
+    if (v) v.currentTime = 10
+  })
+  await page.waitForTimeout(600)
+  await page.evaluate(() => (window as unknown as { LAB: { engine: { departForBackground(): void } } }).LAB.engine.departForBackground())
+  await page.reload()
+
+  await expectSound(page, 20_000)
+  const v = await view(page)
+  expect(v.path).toBe('/watch')
+  expect(v.videoId).toBe('v1')
+  expect(v.playingTitle).toBe('track 1')
+  expect(v.currentTime, 'the place survived the round trip').toBeGreaterThanOrEqual(8)
+})
+
 test('a video YouTube autoplays outside the queue is rejected', async ({ page }) => {
   // The phone showed one title in the bar and another video in the picture
   // (2026-09-09, "화면에보이는 영상하고 하단 재생기의 영상이 다른시점").
@@ -400,6 +441,29 @@ test('a stored queue never claims its old track over an empty player', async ({ 
   expect(v.playingTitle).toBe('')
   expect(v.index).toBe(-1)
   expect(v.queue.map((track) => track.id)).toEqual(['stale'])
+})
+
+test('a pressed queue never takes the rows it cannot play', async ({ page }) => {
+  // The reader's rule, 2026-09-16: "재생할수없는건 애초에담지말자 화면에서
+  // 지우진말고". A dead row between two live ones is not admitted, and a press
+  // meant for it lands on the next thing that actually plays — not, as it did
+  // on the phone, on a black stage with nothing saying why.
+  await lab(page, { fault: 'healthy' })
+  const list = [
+    { videoId: 'v1', title: 'track 1', byline: 'lab', duration: '0:30', unavailable: false },
+    { videoId: 'dead', title: 'dead track', byline: 'lab', duration: '0:30', unavailable: true },
+    { videoId: 'v2', title: 'track 2', byline: 'lab', duration: '0:30', unavailable: false },
+  ]
+  // Pressing the dead row's own place in the list.
+  await page.evaluate(
+    (l) => (window as unknown as { LAB: { play(t: unknown[], i: number): void } }).LAB.play(l, 1),
+    list,
+  )
+  await expectSound(page, 10_000)
+  const v = await view(page)
+  expect(v.queue.map((track) => track.id)).toEqual(['v1', 'v2'])
+  expect(v.playingTitle).toBe('track 2')
+  expect(v.index).toBe(1)
 })
 
 test('a dead track in the middle of a queue does not stop the ones after it', async ({ page }) => {

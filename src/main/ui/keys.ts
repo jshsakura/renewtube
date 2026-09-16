@@ -48,6 +48,8 @@ export const SHORTCUTS: ReadonlyArray<{ keys: string; label: string }> = [
   { keys: 'V', label: '화면 보기' },
   { keys: 'M', label: '음소거' },
   { keys: '/', label: '검색' },
+  { keys: 'Alt+←', label: '뒤로' },
+  { keys: 'Alt+→', label: '앞으로' },
   { keys: 'Esc, Esc', label: 'RenewTube 종료' },
 ]
 
@@ -56,6 +58,10 @@ export interface KeyActions {
   toggleVideo(): void
   /** Opens the search panel over the current screen. */
   openSearch(): void
+  /** Steps back through the screens. */
+  back(): void
+  /** Steps forward again, over ground a back already covered. */
+  forward(): void
 }
 
 export function installKeys(engine: Engine, actions: KeyActions): () => void {
@@ -71,6 +77,16 @@ export function installKeys(engine: Engine, actions: KeyActions): () => void {
     // Space to activate whatever is focused, and without this the same press
     // would open the row *and* pause the music.
     if (ev.defaultPrevented) return
+    // The screen steps, the browser's own keys for them. Taken before the
+    // bare-press gate below — Alt+Left is not a letter shortcut — and before
+    // YouTube sees an arrow it might seek with.
+    if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (ev.key === 'ArrowLeft') actions.back()
+      else actions.forward()
+      return
+    }
     if (ev.ctrlKey || ev.metaKey || ev.altKey || typing(ev)) return
     // Nothing reaches the player through a menu or a dialog. Measured: with a
     // row's menu open, s shuffled the queue behind it and r turned repeat on,

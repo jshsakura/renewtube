@@ -93,6 +93,8 @@ export const ES: Record<string, string> = {
   "대기열이 비어 있습니다.": "La cola está vacía.",
   "대기열에서 빼기": "Quitar de la cola",
   "더보기": "Más",
+  "뒤로": "Atrás",
+  "앞으로": "Adelante",
   "지금 재생": "Reproducir ahora",
   "다음에 재생": "Reproducir a continuación",
   "이 곡으로 라디오": "Iniciar radio",

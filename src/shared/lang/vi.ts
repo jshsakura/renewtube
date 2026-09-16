@@ -93,6 +93,8 @@ export const VI: Record<string, string> = {
   "대기열이 비어 있습니다.": "Hàng chờ đang trống.",
   "대기열에서 빼기": "Bỏ khỏi hàng chờ",
   "더보기": "Thêm",
+  "뒤로": "Quay lại",
+  "앞으로": "Tiến",
   "지금 재생": "Phát ngay",
   "다음에 재생": "Phát tiếp theo",
   "이 곡으로 라디오": "Mở radio từ bài này",

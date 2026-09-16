@@ -100,6 +100,8 @@ export const EN: Record<string, string> = {
   "대기열이 비어 있습니다.": "The queue is empty.",
   "대기열에서 빼기": "Remove from queue",
   "더보기": "More",
+  "뒤로": "Back",
+  "앞으로": "Forward",
   "지금 재생": "Play now",
   "다음에 재생": "Play next",
   "이 곡으로 라디오": "Start radio",
