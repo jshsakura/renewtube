@@ -277,17 +277,19 @@ export async function startRadio(ctx: Ctx, track: Track): Promise<void> {
  */
 export async function shareTrack(ctx: Ctx, track: Track): Promise<void> {
   const url = `https://youtu.be/${track.videoId}`
-  try {
-    if (navigator.share) {
+  if (navigator.share) {
+    try {
       await navigator.share({ title: track.title || track.videoId, url })
       return
+    } catch (err) {
+      // Closing the system sheet is a choice, not a request to copy instead.
+      if ((err as DOMException)?.name === 'AbortError') return
     }
+  }
+  try {
     await navigator.clipboard.writeText(url)
     ctx.say(t('링크를 복사했습니다.'))
-  } catch (err) {
-    // A dismissed share sheet is not a failure; only a share or copy that
-    // could not run is.
-    if ((err as DOMException)?.name === 'AbortError') return
+  } catch {
     ctx.say(t('공유하지 못했습니다.'), true)
   }
 }

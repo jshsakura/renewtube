@@ -15,8 +15,13 @@
 const POS_KEY = 'oc-easy-mode:resume-position'
 /** Where the one-time resume intent for the next arrival is kept. */
 const ARRIVAL_KEY = 'oc-easy-mode:resume-arrival'
+/** The document address that was most recently carrying this tab's music. */
+const PAGE_KEY = 'oc-easy-mode:listening-page'
 /** Where 0.24.28 kept the place. Removed on sight, never read or migrated. */
 const LEGACY_KEY = 'oc-easy-mode:left-at'
+
+/** Long enough for a throttled phone to replace its document. */
+const PAGE_MAX_AGE_MS = 120_000
 
 /** A place that matched the track it was asked about. */
 export interface ResumePlace {
@@ -116,6 +121,41 @@ export function clearPosition(storage: Storage): void {
     storage.removeItem(POS_KEY)
   } catch (e) {
     if (!unavailable(e)) throw e
+  }
+}
+
+/** Records which document is carrying this tab's current track. */
+export function markListeningPage(storage: Storage, page: string, at = Date.now()): void {
+  if (page === '') return
+  try {
+    storage.setItem(PAGE_KEY, JSON.stringify({ page, at }))
+  } catch (e) {
+    if (!unavailable(e)) throw e
+  }
+}
+
+/**
+ * Consumes the previous document's address and says whether this document is
+ * its replacement. A mismatch is consumed too, so navigating elsewhere and
+ * later returning cannot masquerade as a reload.
+ */
+export function takeListeningPage(storage: Storage, page: string, now = Date.now()): boolean {
+  try {
+    const raw = storage.getItem(PAGE_KEY)
+    storage.removeItem(PAGE_KEY)
+    if (!raw) return false
+    const got: unknown = JSON.parse(raw)
+    if (typeof got !== 'object' || got === null) return false
+    const rec = got as { page?: unknown; at?: unknown }
+    return typeof rec.page === 'string'
+      && typeof rec.at === 'number'
+      && Number.isFinite(rec.at)
+      && rec.page === page
+      && now >= rec.at
+      && now - rec.at <= PAGE_MAX_AGE_MS
+  } catch (e) {
+    if (!unavailable(e)) throw e
+    return false
   }
 }
 

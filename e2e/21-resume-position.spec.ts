@@ -102,6 +102,24 @@ test('an intervening page spends recovery intent before a later cold target', as
   expect(cold.at, 'a cold navigation jumped to the stored place').toBeLessThan(3)
 })
 
+test('a different watch address consumes reload proof without following the old track', async ({ page }) => {
+  // Given: this tab is listening on the browse page, with both its current
+  // place and the page-address proof written down.
+  await lab(page, { fault: 'healthy', watch: 'healthy' })
+  await playQueue(page)
+  await expectSound(page)
+  await seekTo(page, 12)
+  await untilStored(page, (s) => s?.id === 'v1' && s.t >= 11.9)
+
+  // When: the reader deliberately opens another watch address in this tab.
+  await page.goto('https://www.youtube.com/watch?v=v3')
+  await page.waitForFunction(() => (window as unknown as { LAB?: unknown }).LAB !== undefined)
+  await page.waitForTimeout(1000)
+
+  // Then: a different address is navigation, not the previous page reloading.
+  expect(new URL(page.url()).searchParams.get('v')).toBe('v3')
+})
+
 test('a reload of the track being heard comes back where it was left', async ({ page }) => {
   // Given: v1 well into its track on its watch page, the place written down
   await lab(page, { fault: 'no-player', watch: 'healthy', reload: 'healthy' })
@@ -160,6 +178,14 @@ test('a reload the queue has outgrown redirects and resumes the queue\'s own tra
     .toBeGreaterThan(0)
   await seekTo(page, 8)
   await untilStored(page, (s) => s?.id === 'v2' && s.t >= 7.9)
+  // Orion/WebKit can classify an explicit refresh as a fresh navigation. The
+  // previous document's own address must still prove this is its replacement.
+  await page.addInitScript(() => {
+    const real = Performance.prototype.getEntriesByType
+    Performance.prototype.getEntriesByType = function (type: string) {
+      return type === 'navigation' ? [] : real.call(this, type)
+    }
+  })
   // When: the stale address is reloaded
   await page.reload()
   // Then: the redirect lands on v2 and applies v2's own place once

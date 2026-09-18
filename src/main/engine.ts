@@ -8,7 +8,7 @@ import { State, disableAutonav, videoIdInUrl, type YtPlayer } from './player.ts'
 import type { Track } from './parse.ts'
 import type { Lang } from '../shared/i18n.ts'
 import { clearRescue, load, markArrival, remember, rescueRecord, save, saveRescue, setQuickOn, takeArrival, type Mode, type Persisted, type Repeat, type Rescue, type Theme, type VideoLayout } from './store.ts'
-import { clearPosition, markResumeArrival, readPosition, takeResumeArrival, writePosition } from './resume-position.ts'
+import { clearPosition, markListeningPage, markResumeArrival, readPosition, takeListeningPage, takeResumeArrival, writePosition } from './resume-position.ts'
 import { narrowNow } from './ui/device.ts'
 
 /**
@@ -144,19 +144,30 @@ function isReload(): boolean {
 }
 
 /**
+ * Reload proof that also works where WebKit reports a refresh as `navigate`.
+ * The listening-page mark is consumed on every new document, matched or not.
+ */
+function isListeningReload(): boolean {
+  const samePage = takeListeningPage(sessionStorage, location.pathname + location.search)
+  return isReload() || samePage
+}
+
+/**
  * Proof that a reload belongs to the track this tab was actually playing.
  *
  * A saved queue alone is not proof: it may be hours old. A same-tab position
  * is. During the first three seconds there deliberately is no saved position,
  * so a freshly written state gets a short grace to cover an immediate reload.
  */
-function continuingReload(state: Persisted, track: Track | undefined): boolean {
-  if (!isReload() || !track || track.unavailable) return false
+function continuingReload(state: Persisted, track: Track | undefined, reloaded: boolean): boolean {
+  if (!reloaded || !track || track.unavailable) return false
   return readPosition(sessionStorage, track.videoId) !== null || Date.now() - state.savedAt < 30_000
 }
 
 export class Engine {
   state: Persisted = load()
+  /** Captured once because reading it consumes the previous document's mark. */
+  private readonly reloaded = isListeningReload()
   player: YtPlayer | null = null
   private listeners = new Set<Listener>()
   private tickListeners = new Set<Listener>()
@@ -312,7 +323,7 @@ export class Engine {
     // two different stories. Keep the queue, clear only its stale cursor. An
     // attached player with a real id is adopted below, and our own recovery
     // arrival has that id in the watch URL as well.
-    if (this.current !== undefined && videoIdInUrl() === undefined && !continuingReload(this.state, this.current)) {
+    if (this.current !== undefined && videoIdInUrl() === undefined && !continuingReload(this.state, this.current, this.reloaded)) {
       this.state.index = -1
       this.state.video = 'hidden'
       save(this.state)
@@ -541,8 +552,8 @@ export class Engine {
     const ours = takeArrival()
     const here = videoIdInUrl()
     const named = this.namedVideo()
-    const reloaded = isReload()
-    const continuing = continuingReload(this.state, this.current)
+    const reloaded = this.reloaded
+    const continuing = continuingReload(this.state, this.current, reloaded)
     // A continuation's one-time mark, spent by taking it whether or not it
     // matched; only its match, or the proven reload below, may arm a place.
     const resumeIntent = takeResumeArrival(sessionStorage, here ?? '')
@@ -783,6 +794,10 @@ export class Engine {
     // sample at the edges of a track is not kept but cleared, and that does
     // count.
     if (this.loading !== undefined || this.foreignSince !== undefined || this.adShowing() || this.namedVideo() !== track.videoId) return
+    // PerformanceNavigationTiming is not reliable on every WebKit host: Orion
+    // has reported an explicit refresh as `navigate`. The old document's own
+    // address is stronger evidence, and a different destination consumes it.
+    markListeningPage(sessionStorage, location.pathname + location.search)
     // The element's own clock, not the last tick's beat: this write is also
     // the page's departure, where half a second of drift is a place lost.
     const el = this.videoEl()

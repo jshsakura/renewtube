@@ -135,6 +135,33 @@ test('a video channel name opens that channel, and the player exposes share', as
     const share = ui.locator('.right .shr')
     await expect(share).toBeVisible()
     await expect(share).toBeEnabled()
+
+    // A browser may expose the system sheet and still refuse to open it. The
+    // link must then take the same clipboard path as a browser with no sheet.
+    await h.page.evaluate(() => {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async () => { throw new DOMException('refused', 'NotAllowedError') },
+      })
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => { document.documentElement.dataset.shared = value },
+        },
+      })
+    })
+    await share.click()
+    await expect.poll(() => h.page.evaluate(() => document.documentElement.dataset.shared)).toBe(`https://youtu.be/${first.videoId}`)
+
+    // The playing track's detail menu exposes the same destinations as its
+    // row, rather than hiding channel navigation behind the source list.
+    await ui.locator('.right .mr').click()
+    const overlay = h.page.locator('oc-easy-mode-overlay')
+    await expect(overlay.getByRole('menuitem', { name: '채널 열기' })).toBeVisible()
+    await expect(overlay.getByRole('menuitem', { name: '공유' })).toBeVisible()
+    await expect(overlay.getByRole('menuitem', { name: '유튜브에서 열기' })).toBeVisible()
+    await overlay.getByRole('menuitem', { name: '채널 열기' }).click()
+    await expect(ui.locator('.main h2')).toHaveText(first.byline)
   } finally {
     await h.close()
   }

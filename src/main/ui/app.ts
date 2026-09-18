@@ -815,7 +815,8 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         ? ` (${left}분 남음)`
         : ` (${t('이 곡까지')})`
       : ''
-    showMenu(shell.overlay, moreButton, [
+    const track = engine.current
+    const items: Array<MenuItem | '-'> = [
       { label: `${t('재생 속도')} · ${rateLabel(engine.state.rate)}`, icon: 'next', onSelect: showSpeedMenu },
       { label: `${t('수면 예약')}${sleepSub}`, icon: 'moon', onSelect: showSleepMenu },
       '-',
@@ -824,7 +825,22 @@ export function mountApp(opts: AppOptions): { ctx: Ctx; destroy(): void } {
         icon: 'thumbDown',
         onSelect: () => setRating(new Event('menu'), 'dislike'),
       },
-    ])
+    ]
+    if (track) {
+      items.push('-')
+      if (track.channelId) {
+        items.push({
+          label: t('채널 열기'),
+          icon: 'channels',
+          onSelect: () => ctx.go({ kind: 'channel', id: track.channelId!, title: track.byline }),
+        })
+      }
+      items.push(
+        { label: t('공유'), icon: 'share', onSelect: () => void shareTrack(ctx, track) },
+        { label: t('유튜브에서 열기'), icon: 'external', onSelect: () => window.open(`https://www.youtube.com/watch?v=${track.videoId}`, '_blank') },
+      )
+    }
+    showMenu(shell.overlay, moreButton, items, track?.title)
   })
 
 
